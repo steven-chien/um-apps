@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
   }
 
   double compute_migrate_time = mysecond() - compute_migrate_start;
-  printf("avg compute migrate: %f\n", compute_migrate_time/(double)nIter);
+  printf("compute migrate: %f\n", compute_migrate_time);
 
   /* Memory clean up */
 //  free(h_A);
