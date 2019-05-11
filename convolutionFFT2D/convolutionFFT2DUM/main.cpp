@@ -38,7 +38,10 @@
 long unsigned int DATA_H = 8000;
 long unsigned int DATA_W = 8000;
 bool validate = false;
-int nIter = 5;
+//int nIter = 5;
+int fft0Iter = 0;
+int fft1Iter = 0;
+int fft2Iter = 0;
 
 int devID;
 
@@ -138,6 +141,7 @@ bool test0(void)
     checkCudaErrors(cudaMallocManaged((void **)&d_DataSpectrum,   fftH * (fftW / 2 + 1) * sizeof(fComplex)));
 
     checkCudaErrors(cudaMallocManaged((void **)&d_KernelSpectrum, fftH * (fftW / 2 + 1) * sizeof(fComplex)));
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2 + 1) * sizeof(fComplex)+fftH * (fftW / 2 + 1) * sizeof(fComplex))/1048576.0);
 
     memset(d_KernelSpectrum, 0, fftH * (fftW / 2 + 1) * sizeof(fComplex));
 
@@ -339,6 +343,7 @@ bool  test1(void)
     checkCudaErrors(cudaMallocManaged((void **)&d_DataSpectrum,    fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)));
 
     checkCudaErrors(cudaMallocManaged((void **)&d_KernelSpectrum,  fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)));
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)+fftH * (fftW / 2 + fftPadding) * sizeof(fComplex))/1048576.0);
 
     printf("...generating random input data\n");
     srand(2010);
@@ -540,6 +545,7 @@ bool test2(void)
     checkCudaErrors(cudaMallocManaged((void **)&d_DataSpectrum0,   fftH * (fftW / 2) * sizeof(fComplex)));
 
     checkCudaErrors(cudaMallocManaged((void **)&d_KernelSpectrum0, fftH * (fftW / 2) * sizeof(fComplex)));
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2) * sizeof(fComplex))/1048576.0);
 
     printf("...generating random input data\n");
     srand(2010);
@@ -693,8 +699,14 @@ int main(int argc, char **argv)
         DATA_H = DATA_W = getCmdLineArgumentInt(argc, (const char **)argv, "size");
     }
 
-    if (checkCmdLineFlag(argc, (const char **)argv, "iterations")) {
-        nIter = getCmdLineArgumentInt(argc, (const char **)argv, "iterations");
+    if (checkCmdLineFlag(argc, (const char **)argv, "fft0Iter")) {
+        fft0Iter = getCmdLineArgumentInt(argc, (const char **)argv, "fft0Iter");
+    }
+    if (checkCmdLineFlag(argc, (const char **)argv, "fft1Iter")) {
+        fft1Iter = getCmdLineArgumentInt(argc, (const char **)argv, "fft1Iter");
+    }
+    if (checkCmdLineFlag(argc, (const char **)argv, "fft2Iter")) {
+        fft2Iter = getCmdLineArgumentInt(argc, (const char **)argv, "fft2Iter");
     }
 
     if (checkCmdLineFlag(argc, (const char **)argv, "validate")) {
@@ -712,7 +724,7 @@ int main(int argc, char **argv)
     sdkCreateTimer(&hTimer);
     double elapsedTime;
 
-    for (int i = 0; i < nIter; i++) {
+    for (int i = 0; i < fft0Iter; i++) {
         sdkStartTimer(&hTimer);
         if (!test0())
         {
@@ -724,7 +736,7 @@ int main(int argc, char **argv)
         printf("0: %d: %f\n", i, elapsedTime);
     }
 
-    for (int i = 0; i < nIter; i++) {
+    for (int i = 0; i < fft1Iter; i++) {
         sdkStartTimer(&hTimer);
         if (!test1())
         {
@@ -736,7 +748,7 @@ int main(int argc, char **argv)
         printf("1: %d: %f\n", i, elapsedTime);
     }
 
-    for (int i = 0; i < nIter; i++) {
+    for (int i = 0; i < fft2Iter; i++) {
         sdkStartTimer(&hTimer);
         if (!test2())
         {
