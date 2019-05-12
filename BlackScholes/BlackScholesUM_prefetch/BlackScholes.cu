@@ -285,10 +285,8 @@ int main(int argc, char **argv)
     }
     else {
         /* fetch back gpu results to trigger migration */
-        for (i = 0; i < OPT_N; i++) {
-            h_CallResultCPU[i] = h_CallResultGPU[i];
-            h_PutResultCPU[i] = h_PutResultGPU[i];
-        }
+        memcpy(h_CallResultCPU, h_CallResultGPU, OPT_SZ);
+        memcpy(h_PutResultCPU, h_PutResultGPU, OPT_SZ);
     }
     sdkStopTimer(&compute_migrate_timer);
     double compute_migrate_time = sdkGetTimerValue(&compute_migrate_timer);
