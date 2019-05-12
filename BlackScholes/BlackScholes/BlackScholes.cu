@@ -159,9 +159,6 @@ printf("size = %ld , alloc = %f MiB \n", OPT_N, OPT_SZ*5.0/1048576.0);
         h_OptionYears[i]   = RandFloat(0.25f, 10.0f);
     }
 
-    sdkResetTimer(&compute_migrate_timer);
-    sdkStartTimer(&compute_migrate_timer);
-
     printf("...copying input data to GPU mem.\n");
     //Copy options data to GPU memory for further processing
     checkCudaErrors(cudaMemcpy(d_StockPrice,  h_StockPrice,   OPT_SZ, cudaMemcpyHostToDevice));
@@ -169,6 +166,8 @@ printf("size = %ld , alloc = %f MiB \n", OPT_N, OPT_SZ*5.0/1048576.0);
     checkCudaErrors(cudaMemcpy(d_OptionYears,  h_OptionYears,   OPT_SZ, cudaMemcpyHostToDevice));
     printf("Data init done.\n\n");
 
+    sdkResetTimer(&compute_migrate_timer);
+    sdkStartTimer(&compute_migrate_timer);
 
     printf("Executing Black-Scholes GPU kernel (%i iterations)...\n", NUM_ITERATIONS);
     //checkCudaErrors(cudaDeviceSynchronize());
