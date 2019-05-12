@@ -168,6 +168,7 @@ int main(int argc, char **argv)
     cusparseSetMatType(descr,CUSPARSE_MATRIX_TYPE_GENERAL);
     cusparseSetMatIndexBase(descr,CUSPARSE_INDEX_BASE_ZERO);
 
+printf("%f MiB\n", (sizeof(int)*(N+1)+sizeof(int)*nz+sizeof(float)*nz+sizeof(float)*N+sizeof(float)*N+N*sizeof(float)+N*sizeof(float)+N*sizeof(float))/1048576.0);
     checkCudaErrors(cudaMalloc((void **)&d_col, nz*sizeof(int)));
     checkCudaErrors(cudaMalloc((void **)&d_row, (N+1)*sizeof(int)));
     checkCudaErrors(cudaMalloc((void **)&d_val, nz*sizeof(float)));
@@ -176,13 +177,13 @@ int main(int argc, char **argv)
     checkCudaErrors(cudaMalloc((void **)&d_p, N*sizeof(float)));
     checkCudaErrors(cudaMalloc((void **)&d_Ax, N*sizeof(float)));
 
-    double compute_migrate_start = mysecond();
-
     cudaMemcpy(d_col, J, nz*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_row, I, (N+1)*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_val, val, nz*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_x, x, N*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_r, rhs, N*sizeof(float), cudaMemcpyHostToDevice);
+
+    double compute_migrate_start = mysecond();
 
     alpha = 1.0;
     alpham1 = -1.0;
