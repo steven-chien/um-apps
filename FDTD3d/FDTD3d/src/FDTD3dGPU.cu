@@ -43,7 +43,7 @@ bool getTargetDeviceGlobalMemSize(memsize_t *result, const int argc, const char 
     return true;
 }
 
-bool fdtdGPU(float *output, const float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv)
+bool fdtdGPU(float *output, const float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv, double *compute_migrate_start)
 {
     const int         outerDimx  = dimx + 2 * radius;
     const int         outerDimy  = dimy + 2 * radius;
@@ -139,6 +139,8 @@ bool fdtdGPU(float *output, const float *input, const float *coeff, const int di
 
     // Copy the coefficients to the device coefficient buffer
     checkCudaErrors(cudaMemcpyToSymbol(stencil, (void *)coeff, (radius + 1) * sizeof(float)));
+
+    *compute_migrate_start = mysecond();
 
 
 #ifdef GPU_PROFILING

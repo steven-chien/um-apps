@@ -25,8 +25,10 @@ typedef uint64_t memsize_t;
 #define k_blockSizeMin 128
 #define k_blockSizeMax (k_blockDimX * k_blockDimMaxY)
 
+#include "FDTD3d.h"
+
 bool getTargetDeviceGlobalMemSize(memsize_t *result, const int argc, const char **argv);
 //bool fdtdGPU(float *output, const float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv);
-bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv);
+bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv, double *compute_migrate_start);
 
 #endif

@@ -198,7 +198,7 @@ bool runTest(int argc, const char **argv)
     generateRandomData(input, outerDimx, outerDimy, outerDimz, lowerBound, upperBound);
     printf("FDTD on %d x %d x %d volume with symmetric filter radius %d for %d timesteps...\n\n", dimx, dimy, dimz, radius, timesteps);
 
-    double compute_migrate_start = mysecond();
+    double compute_migrate_start;
 
     if (validate) {
         // Execute on the host
@@ -212,7 +212,7 @@ bool runTest(int argc, const char **argv)
 
     // Execute on the device
     printf("fdtdGPU...\n");
-    fdtdGPU(device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv);
+    fdtdGPU(device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv, &compute_migrate_start);
     printf("fdtdGPU complete\n");
 
     if (validate) {

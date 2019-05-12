@@ -198,8 +198,6 @@ bool runTest(int argc, const char **argv)
     //const size_t paddedVolumeSize = volumeSize + padding;
     const unsigned long long int paddedVolumeSize = volumeSize + padding;
 
-printf("padded volume size: %ld\n", paddedVolumeSize*sizeof(float));
-
 
     // Allocate memory
     host_output = (float *)calloc(volumeSize, sizeof(float));
@@ -208,6 +206,7 @@ printf("padded volume size: %ld\n", paddedVolumeSize*sizeof(float));
     checkCudaErrors(cudaMallocManaged((void**)&input, sizeof(float)*paddedVolumeSize));
     //coeff       = (float *)malloc((radius + 1) * sizeof(float));
     checkCudaErrors(cudaMallocManaged((void**)&coeff, sizeof(float)*(radius+1)));
+    printf("%f MiB\n", (paddedVolumeSize * sizeof(float)+sizeof(float)*paddedVolumeSize+sizeof(float)*(radius+1))/1048576.0);
 
     // Create coefficients
     for (int i = 0 ; i <= radius ; i++)
@@ -221,7 +220,7 @@ printf("padded volume size: %ld\n", paddedVolumeSize*sizeof(float));
     memcpy(device_output+padding, input+padding, sizeof(float) * volumeSize);
     printf("FDTD on %d x %d x %d volume with symmetric filter radius %d for %d timesteps...\n\n", dimx, dimy, dimz, radius, timesteps);
 
-    double compute_migrate_start = mysecond();
+    double compute_migrate_start = 0.0;
 
     if (validate) {
         // Allocate memory
@@ -238,7 +237,7 @@ printf("padded volume size: %ld\n", paddedVolumeSize*sizeof(float));
     // Execute on the device
     double gpu_start = mysecond();
     printf("fdtdGPU...\n");
-    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv);
+    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv, &compute_migrate_start);
     printf("fdtdGPU complete\n");
     double gpuElapsedTime = mysecond() - gpu_start;
     printf("gpu time: %f\n", gpuElapsedTime);

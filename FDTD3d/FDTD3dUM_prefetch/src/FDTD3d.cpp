@@ -222,7 +222,11 @@ bool runTest(int argc, const char **argv)
     memcpy(device_output+padding, input+padding, sizeof(float) * volumeSize);
     printf("FDTD on %d x %d x %d volume with symmetric filter radius %d for %d timesteps...\n\n", dimx, dimy, dimz, radius, timesteps);
 
-    double compute_migrate_start = mysecond();
+    cudaMemPrefetchAsync(coeff, sizeof(float)*(radius+1), devID, s1);
+    cudaMemPrefetchAsync(input, sizeof(float)*paddedVolumeSize, devID, s1);
+    cudaMemPrefetchAsync(device_output, sizeof(float)*paddedVolumeSize, devID, s1);
+
+    double compute_migrate_start = 0.0;
 
     if (validate) {
         // Allocate memory
@@ -236,14 +240,10 @@ bool runTest(int argc, const char **argv)
         printf("cpu time: %f\n", elapsedtime);
     }
 
-    cudaMemPrefetchAsync(coeff, sizeof(float)*(radius+1), devID, s1);
-    cudaMemPrefetchAsync(input, sizeof(float)*paddedVolumeSize, devID, s1);
-    cudaMemPrefetchAsync(device_output, sizeof(float)*paddedVolumeSize, devID, s1);
-
     // Execute on the device
     double gpu_start = mysecond();
     printf("fdtdGPU...\n");
-    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv);
+    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv, &compute_migrate_start);
     printf("fdtdGPU complete\n");
     double gpuElapsedTime = mysecond() - gpu_start;
     printf("gpu time: %f\n", gpuElapsedTime);
