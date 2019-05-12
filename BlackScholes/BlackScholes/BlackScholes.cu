@@ -51,14 +51,14 @@ float RandFloat(float low, float high)
 ////////////////////////////////////////////////////////////////////////////////
 // Data configuration
 ////////////////////////////////////////////////////////////////////////////////
-int OPT_N = 128000000;
+unsigned long int OPT_N = 128000000;
 //const int OPT_N = 180000000;
 int  NUM_ITERATIONS = 512;
 //const int  NUM_ITERATIONS = 1;
 
 bool validate = false;
 
-int          OPT_SZ = OPT_N * sizeof(float);
+unsigned long int          OPT_SZ = OPT_N * sizeof(float);
 const float      RISKFREE = 0.02f;
 const float    VOLATILITY = 0.30f;
 
@@ -138,6 +138,7 @@ int main(int argc, char **argv)
     h_OptionStrike  = (float *)malloc(OPT_SZ);
     h_OptionYears   = (float *)malloc(OPT_SZ);
 
+printf("size = %ld , alloc = %f MiB \n", OPT_N, OPT_SZ*5.0/1048576.0);
     printf("...allocating GPU memory for options.\n");
     checkCudaErrors(cudaMalloc((void **)&d_CallResult,   OPT_SZ));
     checkCudaErrors(cudaMalloc((void **)&d_PutResult,    OPT_SZ));

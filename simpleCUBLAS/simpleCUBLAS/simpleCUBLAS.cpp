@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
   float *d_C = 0;
   float alpha = 1.0f;
   float beta = 0.0f;
-  int n2 = N * N;
+  unsigned long int n2 = N * N;
   int i;
   float error_norm;
   float ref_norm;
