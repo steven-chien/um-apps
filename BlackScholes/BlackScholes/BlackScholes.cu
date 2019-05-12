@@ -261,9 +261,8 @@ printf("size = %ld , alloc = %f MiB \n", OPT_N, OPT_SZ*5.0/1048576.0);
     }
     else {
         /* fetch back gpu results to trigger migration */
-        for (i = 0; i < OPT_N; i++) {
-            h_CallResultCPU[i] = h_CallResultGPU[i];
-	}
+        memcpy(h_CallResultCPU, h_CallResultGPU, OPT_SZ);
+        memcpy(h_PutResultCPU, h_PutResultGPU, OPT_SZ);
     }
     sdkStopTimer(&compute_migrate_timer);
     double compute_migrate_time = sdkGetTimerValue(&compute_migrate_timer);
