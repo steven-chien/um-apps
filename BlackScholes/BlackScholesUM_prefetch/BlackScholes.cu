@@ -177,27 +177,22 @@ int main(int argc, char **argv)
     printf("Executing Black-Scholes GPU kernel (%i iterations)...\n", NUM_ITERATIONS);
     //checkCudaErrors(cudaDeviceSynchronize());
 
-    cudaStream_t s0, s1, s2, s3, s4, s5;
-    cudaStreamCreate(&s0);
+    cudaStream_t s1;
     cudaStreamCreate(&s1);
-    cudaStreamCreate(&s2);
-    cudaStreamCreate(&s3);
-    cudaStreamCreate(&s4);
-    cudaStreamCreate(&s5);
 
     cudaMemPrefetchAsync(h_StockPrice, OPT_SZ, devID, s1);
-    cudaMemPrefetchAsync(h_OptionStrike, OPT_SZ, devID, s2);
-    cudaMemPrefetchAsync(h_OptionYears, OPT_SZ, devID, s3);
+    cudaMemPrefetchAsync(h_OptionStrike, OPT_SZ, devID, s1);
+    cudaMemPrefetchAsync(h_OptionYears, OPT_SZ, devID, s1);
     
-    cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, devID, s4);
-    cudaMemPrefetchAsync(h_PutResultGPU, OPT_SZ, devID, s5);
+    cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, devID, s1);
+    cudaMemPrefetchAsync(h_PutResultGPU, OPT_SZ, devID, s1);
 
     sdkResetTimer(&hTimer);
     sdkStartTimer(&hTimer);
 
     for (i = 0; i < NUM_ITERATIONS; i++)
     {
-        BlackScholesGPU<<<DIV_UP((OPT_N/2), 128), 128/*480, 128*/, 0, s0>>>(
+        BlackScholesGPU<<<DIV_UP((OPT_N/2), 128), 128/*480, 128*/, 0>>>(
             (float2 *)d_CallResult,
             (float2 *)d_PutResult,
             (float2 *)d_StockPrice,
@@ -210,7 +205,7 @@ int main(int argc, char **argv)
         getLastCudaError("BlackScholesGPU() execution failed\n");
     }
 
-    cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, cudaCpuDeviceId, s0);
+    cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, cudaCpuDeviceId);
     //cudaMemPrefetchAsync(h_PutResultGPU, OPT_SZ, cudaCpuDeviceId, NULL);
 
     checkCudaErrors(cudaDeviceSynchronize());
@@ -220,7 +215,7 @@ int main(int argc, char **argv)
     gpuTime = gpuTotalTime / NUM_ITERATIONS;
 
     //Both call and put is calculated
-    printf("Options count             : %i     \n", 2 * OPT_N);
+    printf("Options count             : %ld    \n", 2 * OPT_N);
     printf("BlackScholesGPU() time    : %f msec\n", gpuTime);
     printf("Effective memory bandwidth: %f GB/s\n", ((double)(5 * OPT_N * sizeof(float)) * 1E-9) / (gpuTime * 1E-3));
     printf("Gigaoptions per second    : %f     \n\n", ((double)(2 * OPT_N) * 1E-9) / (gpuTime * 1E-3));
@@ -301,12 +296,7 @@ int main(int argc, char **argv)
     checkCudaErrors(cudaFree(d_PutResult));
     checkCudaErrors(cudaFree(d_CallResult));
 
-    checkCudaErrors(cudaStreamDestroy(s0));
     checkCudaErrors(cudaStreamDestroy(s1));
-    checkCudaErrors(cudaStreamDestroy(s2));
-    checkCudaErrors(cudaStreamDestroy(s3));
-    checkCudaErrors(cudaStreamDestroy(s4));
-    checkCudaErrors(cudaStreamDestroy(s5));
 
     printf("...releasing CPU memory.\n");
 //    free(h_OptionYears);

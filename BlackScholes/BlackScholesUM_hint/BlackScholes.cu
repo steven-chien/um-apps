@@ -164,12 +164,12 @@ int main(int argc, char **argv)
         h_OptionYears[i]   = RandFloat(0.25f, 10.0f);
     }
 
-    sdkResetTimer(&compute_migrate_timer);
-    sdkStartTimer(&compute_migrate_timer);
-
     cudaMemAdvise(h_StockPrice, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
     cudaMemAdvise(h_OptionStrike, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
     cudaMemAdvise(h_OptionYears, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
+
+    sdkResetTimer(&compute_migrate_timer);
+    sdkStartTimer(&compute_migrate_timer);
 
 //    cudaMemPrefetchAsync(h_StockPrice, OPT_SZ, devID, NULL);
 //    cudaMemPrefetchAsync(h_OptionStrike, OPT_SZ, devID, NULL);
@@ -215,7 +215,7 @@ int main(int argc, char **argv)
     gpuTime = gpuTotalTime / NUM_ITERATIONS;
 
     //Both call and put is calculated
-    printf("Options count             : %i     \n", 2 * OPT_N);
+    printf("Options count             : %ld    \n", 2 * OPT_N);
     printf("BlackScholesGPU() time    : %f msec\n", gpuTime);
     printf("Effective memory bandwidth: %f GB/s\n", ((double)(5 * OPT_N * sizeof(float)) * 1E-9) / (gpuTime * 1E-3));
     printf("Gigaoptions per second    : %f     \n\n", ((double)(2 * OPT_N) * 1E-9) / (gpuTime * 1E-3));
