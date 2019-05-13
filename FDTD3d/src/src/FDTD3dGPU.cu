@@ -45,10 +45,11 @@ bool getTargetDeviceGlobalMemSize(memsize_t *result, const int argc, const char 
 
 bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv, double *compute_migrate_start)
 {
-    const int         outerDimx  = dimx + 2 * radius;
-    const int         outerDimy  = dimy + 2 * radius;
-    const int         outerDimz  = dimz + 2 * radius;
-    const size_t      volumeSize = outerDimx * outerDimy * outerDimz;
+    const unsigned long int         outerDimx  = (unsigned long int)dimx + 2 * radius;
+    const unsigned long int         outerDimy  = (unsigned long int)dimy + 2 * radius;
+    const unsigned long int         outerDimz  = (unsigned long int)dimz + 2 * radius;
+    //const size_t      volumeSize = outerDimx * outerDimy * outerDimz;
+    const unsigned long int      volumeSize = outerDimx * outerDimy * outerDimz;
     int               deviceCount  = 0;
     int               targetDevice = 0;
     float            *bufferOut    = 0;
@@ -57,8 +58,9 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
     dim3              dimGrid;
 
     // Ensure that the inner data starts on a 128B boundary
-    const int padding = (128 / sizeof(float)) - radius;
-    const size_t paddedVolumeSize = volumeSize + padding;
+    const unsigned long int padding = (128 / sizeof(float)) - radius;
+    //const size_t paddedVolumeSize = volumeSize + padding;
+    const unsigned long int paddedVolumeSize = volumeSize + padding;
 
 #ifdef GPU_PROFILING
     cudaEvent_t profileStart = 0;
@@ -94,7 +96,8 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
 //    checkCudaErrors(cudaMallocManaged((void**)&bufferIn, paddedVolumeSize * sizeof(float)));
 
     // Check for a command-line specified block size
-    int userBlockSize;
+    //int userBlockSize;
+    unsigned long int userBlockSize;
 
     if (checkCmdLineFlag(argc, (const char **)argv, "block-size"))
     {

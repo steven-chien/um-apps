@@ -52,12 +52,13 @@ void generatePatternData(float *data, const int dimx, const int dimy, const int 
 
 bool fdtdReference(float *output, const float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps)
 {
-    const int     outerDimx    = dimx + 2 * radius;
-    const int     outerDimy    = dimy + 2 * radius;
-    const int     outerDimz    = dimz + 2 * radius;
-    const size_t  volumeSize   = outerDimx * outerDimy * outerDimz;
-    const int     stride_y     = outerDimx;
-    const int     stride_z     = stride_y * outerDimy;
+    const unsigned long int     outerDimx    = (unsigned long int)dimx + 2 * radius;
+    const unsigned long int     outerDimy    = (unsigned long int)dimy + 2 * radius;
+    const unsigned long int     outerDimz    = (unsigned long int)dimz + 2 * radius;
+    //const size_t  volumeSize   = outerDimx * outerDimy * outerDimz;
+    const unsigned long int  volumeSize   = (unsigned long int)outerDimx * (unsigned long int)outerDimy * (unsigned long int)outerDimz;
+    const unsigned long int     stride_y     = outerDimx;
+    const unsigned long int     stride_z     = stride_y * outerDimy;
     float        *intermediate = 0;
     const float  *bufsrc       = 0;
     float        *bufdst       = 0;
@@ -66,6 +67,10 @@ bool fdtdReference(float *output, const float *input, const float *coeff, const 
     // Allocate temporary buffer
     printf(" calloc intermediate\n");
     intermediate = (float *)calloc(volumeSize, sizeof(float));
+    if (intermediate == NULL) {
+        printf("cannot allocate %ld byte for intermediate\n", volumeSize);
+        exit(1);
+    }
 
     // Decide which buffer to use first (result should end up in output)
     if ((timesteps % 2) == 0)

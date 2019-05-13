@@ -41,8 +41,8 @@ __global__ void FiniteDifferencesKernel(float *output,
     const int stride_y = dimx + 2 * RADIUS;
     const int stride_z = stride_y * (dimy + 2 * RADIUS);
 
-    int inputIndex  = 0;
-    int outputIndex = 0;
+    unsigned long int inputIndex  = 0;
+    unsigned long int outputIndex = 0;
 
     // Advance inputIndex to start of inner volume
     inputIndex += RADIUS * stride_y + RADIUS;
