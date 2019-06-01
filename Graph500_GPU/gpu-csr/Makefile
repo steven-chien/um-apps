@@ -8,7 +8,7 @@ INPUT=
 CUDA_ARCH=-gencode arch=compute_37,code=sm_37 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70 -gencode arch=compute_70,code=compute_70 
 #CUDA_LINK= -Xcompiler -fopenmp -arch=$(CUDA_ARCH)
 CUDA_LINK= -Xcompiler -fopenmp $(CUDA_ARCH)
-EXEC = merrill romeo romeo_um romeo_um_advice romeo_um_prefetch romeo_um_both base romeo_multiGPU romeo_hypercube
+EXEC = merrill romeo romeo_um romeo_um_advise romeo_um_prefetch romeo_um_both base romeo_multiGPU romeo_hypercube
 
 all: $(EXEC)
 
@@ -32,7 +32,7 @@ romeo: $(GENERATOR_SOURCES) $(GRAPH500_SOURCES) bfs_romeo.o
 romeo_um: $(GENERATOR_SOURCES) $(GRAPH500_SOURCES) bfs_romeo_um.o 
 	nvcc -o $@ $^ $(CUDA_LINK) $(INPUT)
 
-romeo_um_advice: $(GENERATOR_SOURCES) $(GRAPH500_SOURCES) bfs_romeo_um_advice.o 
+romeo_um_advise: $(GENERATOR_SOURCES) $(GRAPH500_SOURCES) bfs_romeo_um_advise.o 
 	nvcc -o $@ $^ $(CUDA_LINK) $(INPUT)
 
 romeo_um_prefetch: $(GENERATOR_SOURCES) $(GRAPH500_SOURCES) bfs_romeo_um_prefetch.o 

@@ -46,6 +46,9 @@ vgcore.*
 *.nvvp
 *.xml
 *.orig
+*.nvprof
+*.prof
+*.nvvp
 
 simpleCUBLAS/simpleCUBLASUM_hint_prefetch/simpleCUBLAS
 simpleCUBLAS/simpleCUBLAS/simpleCUBLAS
@@ -61,7 +64,7 @@ matrixMul/matrixMulUM_hint/matrixMul
 Graph500_GPU/dgx/merrill
 Graph500_GPU/gpu-csr/romeo_multiGPU
 Graph500_GPU/gpu-csr/romeo_um
-Graph500_GPU/gpu-csr/romeo_um_advice
+Graph500_GPU/gpu-csr/romeo_um_advise
 Graph500_GPU/gpu-csr/romeo_hypercube
 Graph500_GPU/gpu-csr/romeo_um_both
 Graph500_GPU/gpu-csr/merrill
