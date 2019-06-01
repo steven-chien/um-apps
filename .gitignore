@@ -68,17 +68,6 @@ Graph500_GPU/gpu-csr/merrill
 Graph500_GPU/gpu-csr/romeo
 Graph500_GPU/gpu-csr/romeo_um_prefetch
 Graph500_GPU/gpu-csr/base
-Graph500_GPU/.git/hooks/pre-receive.sample
-Graph500_GPU/.git/hooks/applypatch-msg.sample
-Graph500_GPU/.git/hooks/fsmonitor-watchman.sample
-Graph500_GPU/.git/hooks/pre-applypatch.sample
-Graph500_GPU/.git/hooks/commit-msg.sample
-Graph500_GPU/.git/hooks/post-update.sample
-Graph500_GPU/.git/hooks/pre-commit.sample
-Graph500_GPU/.git/hooks/pre-push.sample
-Graph500_GPU/.git/hooks/prepare-commit-msg.sample
-Graph500_GPU/.git/hooks/update.sample
-Graph500_GPU/.git/hooks/pre-rebase.sample
 BlackScholes/BlackScholesUM_hint_prefetch/BlackScholes
 BlackScholes/BlackScholes/BlackScholes
 BlackScholes/BlackScholesUM_hint/BlackScholes
