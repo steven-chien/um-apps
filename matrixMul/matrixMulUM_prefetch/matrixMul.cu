@@ -163,10 +163,10 @@ int MatrixMultiply(int argc, char **argv,
     const float valB = 0.01f;
     ConstantInit(h_A, size_A, 1.0f);
     //cudaMemAdvise(h_A, mem_size_B, cudaMemAdviseSetReadMostly, devID);
-    cudaMemPrefetchAsync(h_A, mem_size_A/2, devID, s1);
+    cudaMemPrefetchAsync(h_A, mem_size_A, devID, s1);
     ConstantInit(h_B, size_B, valB);
     //cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetReadMostly, devID);
-    cudaMemPrefetchAsync(h_B, mem_size_B/2, devID, s2);
+    cudaMemPrefetchAsync(h_B, mem_size_B, devID, s1);
 
     // Allocate device memory
     float *d_A, *d_B, *d_C;
@@ -177,7 +177,7 @@ int MatrixMultiply(int argc, char **argv,
 //    float *h_C = reinterpret_cast<float *>(malloc(mem_size_C));
     float *h_C;
     checkCudaErrors(cudaMallocManaged(reinterpret_cast<void **>(&h_C), mem_size_C));
-    cudaMemPrefetchAsync(h_C, mem_size_C/2, devID, s3);
+    cudaMemPrefetchAsync(h_C, mem_size_C, devID, s1);
     //cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, devID);
 
     if (h_C == NULL) {
@@ -233,18 +233,9 @@ int MatrixMultiply(int argc, char **argv,
 
     // Execute the kernel
     //int nIter = 300;
-    int nIter = 10;
+    //int nIter = 10;
 
     for (int j = 0; j < nIter; j++) {
-	cudaStreamSynchronize(s1);
-	cudaStreamSynchronize(s2);
-	cudaStreamSynchronize(s3);
-	cudaStreamSynchronize(NULL);
-
-        cudaMemPrefetchAsync(h_A, mem_size_A/2, devID, s1);
-        cudaMemPrefetchAsync(h_B, mem_size_B/2, devID, s2);
-        cudaMemPrefetchAsync(h_C, mem_size_C/2, devID, s3);
-
         if (block_size == 16) {
             MatrixMulCUDA<16> <<< grid, threads >>>(d_C, d_A, d_B,
                                                     dimsA.x, dimsB.x);

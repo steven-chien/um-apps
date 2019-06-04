@@ -170,7 +170,8 @@ int MatrixMultiply(int argc, char **argv,
 //    float *h_C = reinterpret_cast<float *>(malloc(mem_size_C));
     float *h_C;
     checkCudaErrors(cudaMallocManaged(reinterpret_cast<void **>(&h_C), mem_size_C));
-    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, devID);
+    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetPreferredLocation, devID);
+    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
 
     if (h_C == NULL) {
         fprintf(stderr, "Failed to allocate host matrix C!\n");
@@ -223,7 +224,6 @@ int MatrixMultiply(int argc, char **argv,
 
     // Execute the kernel
     //int nIter = 300;
-    int nIter = 10;
 
     for (int j = 0; j < nIter; j++) {
         if (block_size == 16) {
@@ -234,8 +234,8 @@ int MatrixMultiply(int argc, char **argv,
                                                     dimsA.x, dimsB.x);
         }
     }
-    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseUnsetAccessedBy, devID);
-    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    //cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseUnsetAccessedBy, devID);
+    //cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
 
     // Record the stop event
     checkCudaErrors(cudaEventRecord(stop, NULL));
