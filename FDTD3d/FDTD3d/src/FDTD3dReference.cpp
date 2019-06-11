@@ -129,8 +129,11 @@ bool fdtdReference(float *output, const float *input, const float *coeff, const 
 
     printf("\n");
 
-    if (intermediate)
+    if (intermediate) {
+	free_start = mysecond();
         free(intermediate);
+	free_stop = mysecond();
+    }
 
     return true;
 }

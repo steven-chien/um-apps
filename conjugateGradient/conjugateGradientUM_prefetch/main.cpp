@@ -29,6 +29,39 @@
 #include <helper_functions.h>  // helper for shared functions common to CUDA Samples
 #include <helper_cuda.h>       // helper function CUDA error checking and initialization
 
+double gpu_start;
+double gpu_stop;
+double cpu_start;
+double cpu_stop;
+double application_start;
+double application_stop;
+double compute_migrate_start;
+double compute_migrate_stop;
+double malloc_start;
+double malloc_stop;
+double free_start;
+double free_stop;
+double cuda_malloc_start;
+double cuda_malloc_stop;
+double cuda_free_start;
+double cuda_free_stop;
+double init_data_start;
+double init_data_stop;
+double h2d_memcpy_start;
+double h2d_memcpy_stop;
+double d2h_memcpy_start;
+double d2h_memcpy_stop;
+double h2d_prefetch_start;
+double h2d_prefetch_stop;
+double d2h_prefetch_start;
+double d2h_prefetch_stop;
+double advise_start;
+double advise_stop;
+double cublas_init_start;
+double cublas_init_stop;
+double cublas_destroy_start;
+double cublas_destroy_stop;
+
 const char *sSDKname     = "conjugateGradientUM";
 
 /* genTridiag: generate a random tridiagonal symmetric matrix */
@@ -82,7 +115,8 @@ double mysecond(){
 
 int main(int argc, char **argv)
 {
-    double elapsedTime;
+    /////////////////////////////// START TIMER ////////////////////////////////////
+    application_start = mysecond();
 
     int N = 0, nz = 0, *I = NULL, *J = NULL;
     float *val = NULL;
@@ -129,21 +163,30 @@ int main(int argc, char **argv)
     /* Generate a random tridiagonal symmetric matrix in CSR format */
     //N = 1048576;
 
+    cuda_malloc_start = mysecond();
     cudaMallocManaged((void **)&I, sizeof(int)*(N+1));
     cudaMallocManaged((void **)&J, sizeof(int)*nz);
     cudaMallocManaged((void **)&val, sizeof(float)*nz);
-
-    genTridiag(I, J, val, N, nz);
-
     cudaMallocManaged((void **)&x, sizeof(float)*N);
     cudaMallocManaged((void **)&rhs, sizeof(float)*N);
+    // temp memory for CG
+    checkCudaErrors(cudaMallocManaged((void **)&r, N*sizeof(float)));
+    checkCudaErrors(cudaMallocManaged((void **)&p, N*sizeof(float)));
+    checkCudaErrors(cudaMallocManaged((void **)&Ax, N*sizeof(float)));
+    cuda_malloc_stop = mysecond();
+
+    init_data_start = cuda_malloc_stop;
+    genTridiag(I, J, val, N, nz);
 
     for (int i = 0; i < N; i++)
     {
         rhs[i] = 1.0;
         x[i] = 0.0;
+        r[i] = rhs[i];
     }
+    init_data_stop = mysecond();
 
+    cublas_init_start = init_data_stop;
     /* Get handle to the CUBLAS context */
     cublasHandle_t cublasHandle = 0;
     cublasStatus_t cublasStatus;
@@ -165,11 +208,7 @@ int main(int argc, char **argv)
 
     cusparseSetMatType(descr,CUSPARSE_MATRIX_TYPE_GENERAL);
     cusparseSetMatIndexBase(descr,CUSPARSE_INDEX_BASE_ZERO);
-
-    // temp memory for CG
-    checkCudaErrors(cudaMallocManaged((void **)&r, N*sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **)&p, N*sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **)&Ax, N*sizeof(float)));
+    cublas_init_stop = mysecond();
 
     printf("I:   %p\n", (void*)I);
     printf("J:   %p\n", (void*)J);
@@ -182,25 +221,26 @@ int main(int argc, char **argv)
 
     cudaDeviceSynchronize();
 
-    for (int i=0; i < N; i++)
-    {
-        r[i] = rhs[i];
-    }
 
-    double compute_migrate_start = mysecond();
 
     cudaStream_t s1;
     cudaStreamCreate(&s1);
 
+    h2d_prefetch_start = mysecond();
     cudaMemPrefetchAsync(r, sizeof(float)*N, devID, s1);
     cudaMemPrefetchAsync(I, sizeof(int)*(N+1), devID, s1);
     cudaMemPrefetchAsync(J, sizeof(int)*nz, devID, s1);
     cudaMemPrefetchAsync(val, sizeof(float)*nz, devID, s1);
+    h2d_prefetch_stop = mysecond();
+
+    compute_migrate_start = h2d_prefetch_stop;
 
     alpha = 1.0;
     alpham1 = -1.0;
     beta = 0.0;
     r0 = 0.;
+
+    gpu_start = mysecond();
 
     cusparseScsrmv(cusparseHandle,CUSPARSE_OPERATION_NON_TRANSPOSE, N, N, nz, &alpha, descr, val, I, J, x, &beta, Ax);
 
@@ -238,10 +278,16 @@ int main(int argc, char **argv)
         k++;
     }
 
+    gpu_stop = mysecond();
+
+    d2h_prefetch_start = gpu_stop;
     cudaMemPrefetchAsync(I, sizeof(int)*(N+1), cudaCpuDeviceId);
     cudaMemPrefetchAsync(J, sizeof(int)*nz, cudaCpuDeviceId);
     cudaMemPrefetchAsync(x, sizeof(float)*N, cudaCpuDeviceId);
     cudaMemPrefetchAsync(val, sizeof(float)*nz, cudaCpuDeviceId);
+    d2h_prefetch_stop = mysecond();
+
+    cpu_start = d2h_prefetch_stop;
 
     printf("Final residual: %e\n",sqrt(r1));
 
@@ -266,14 +312,16 @@ int main(int argc, char **argv)
         }
     }
 
-    double end_time = mysecond();
-    elapsedTime = end_time - start_time;
-    double compute_migrate_time = end_time - compute_migrate_start;
-    printf("runtime: %f , compute migrate: %f\n", elapsedTime, compute_migrate_time);
+    cpu_stop = mysecond();
 
+    compute_migrate_stop = cpu_stop;
+
+    cublas_destroy_start = cpu_stop;
     cusparseDestroy(cusparseHandle);
     cublasDestroy(cublasHandle);
+    cublas_destroy_stop = mysecond();
 
+    cuda_free_start = cublas_destroy_stop;
     cudaFree(I);
     cudaFree(J);
     cudaFree(val);
@@ -282,6 +330,22 @@ int main(int argc, char **argv)
     cudaFree(r);
     cudaFree(p);
     cudaFree(Ax);
+    cuda_free_stop = mysecond();
+
+    application_stop = cuda_free_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
+    printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+    printf("\ncublas init timer: %f\n", cublas_init_stop - cublas_init_start);
+    printf("cublas destroy timer: %f\n", cublas_destroy_stop - cublas_destroy_start);
+    printf("misc timer: %f\n", cuda_malloc_start - application_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("application timer: %f\n\n", application_stop - application_start);
 
     //printf("Test Summary:  Error amount = %f, result = %s\n", err, (k <= max_iter) ? "SUCCESS" : "FAILURE");
     printf("Test Summary:  Error amount = %f\n", err);

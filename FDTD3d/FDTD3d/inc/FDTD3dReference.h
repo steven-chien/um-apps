@@ -11,6 +11,7 @@
 
 #ifndef _FDTD3DREFERENCE_H_
 #define _FDTD3DREFERENCE_H_
+#include "FDTD3d.h"
 
 void generateRandomData(float *data, const int dimx, const int dimy, const int dimz, const float lowerBound, const float upperBound);
 void generatePatternData(float *data, const int dimx, const int dimy, const int dimz, const float lowerBound, const float upperBound);

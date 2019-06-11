@@ -51,4 +51,38 @@ inline double mysecond(){
     return ( (double) tp.tv_sec + (double) tp.tv_usec * 1.e-6 );
 }
 
+extern double gpu_start;
+extern double gpu_stop;
+extern double cpu_start;
+extern double cpu_stop;
+extern double application_start;
+extern double application_stop;
+extern double compute_migrate_start;
+extern double compute_migrate_stop;
+extern double malloc_start;
+extern double malloc_stop;
+extern double free_start;
+extern double free_stop;
+extern double cuda_malloc_start;
+extern double cuda_malloc_stop;
+extern double cuda_free_start;
+extern double cuda_free_stop;
+extern double init_data_start;
+extern double init_data_stop;
+extern double h2d_memcpy_start;
+extern double h2d_memcpy_stop;
+extern double d2h_memcpy_start;
+extern double d2h_memcpy_stop;
+extern double h2d_prefetch_start;
+extern double h2d_prefetch_stop;
+extern double d2h_prefetch_start;
+extern double d2h_prefetch_stop;
+extern double advise_start;
+extern double advise_stop;
+extern double advise_read_start;
+extern double advise_read_stop;
+extern double misc_start;
+extern double misc_stop;
+extern double misc_timer;
+
 #endif

@@ -49,6 +49,44 @@
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
 
+double gpu_start;
+double gpu_stop;
+double cpu_start;
+double cpu_stop;
+double application_start;
+double application_stop;
+double compute_migrate_start;
+double compute_migrate_stop;
+double malloc_start;
+double malloc_stop;
+double free_start;
+double free_stop;
+double cuda_malloc_start;
+double cuda_malloc_stop;
+double cuda_free_start;
+double cuda_free_stop;
+double init_data_start;
+double init_data_stop;
+double h2d_memcpy_start;
+double h2d_memcpy_stop;
+double d2h_memcpy_start;
+double d2h_memcpy_stop;
+double h2d_prefetch_start;
+double h2d_prefetch_stop;
+double d2h_prefetch_start;
+double d2h_prefetch_stop;
+double advise_start;
+double advise_stop;
+double advise_read_start;
+double advise_read_stop;
+double cublas_init_start;
+double cublas_init_stop;
+double cublas_destroy_start;
+double cublas_destroy_stop;
+double misc_start;
+double misc_stop;
+double misc_timer;
+
 /* Matrix size */
 //#define N (275)
 unsigned long int N = 275;
@@ -87,6 +125,8 @@ static void simple_sgemm(int n, float alpha, const float *A, const float *B,
 
 /* Main */
 int main(int argc, char **argv) {
+  application_start = mysecond();
+
   cublasStatus_t status;
   float *h_A;
   float *h_B;
@@ -125,39 +165,34 @@ int main(int argc, char **argv) {
 
   printf("size: %ldx%ld\n", N, N);
 
+  cudaStream_t s1;
+  cudaStreamCreate(&s1);
+
   /* Initialize CUBLAS */
   printf("simpleCUBLAS test running..\n");
 
+  cublas_init_start = mysecond();
   status = cublasCreate(&handle);
 
   if (status != CUBLAS_STATUS_SUCCESS) {
     fprintf(stderr, "!!!! CUBLAS initialization error\n");
     return EXIT_FAILURE;
   }
+  cublas_init_stop = mysecond();
 
   /* Allocate host memory for the matrices */
-  h_A = reinterpret_cast<float *>(malloc(n2 * sizeof(h_A[0])));
+  malloc_start = cublas_init_stop;
+  /* Allocate host memory for reading back the result from device memory */
+  h_C_ref = reinterpret_cast<float *>(malloc(n2 * sizeof(h_C[0])));
 
-  if (h_A == 0) {
-    fprintf(stderr, "!!!! host memory allocation error (A)\n");
-    return EXIT_FAILURE;
-  }
-
-  h_B = reinterpret_cast<float *>(malloc(n2 * sizeof(h_B[0])));
-
-  if (h_B == 0) {
-    fprintf(stderr, "!!!! host memory allocation error (B)\n");
-    return EXIT_FAILURE;
-  }
-
-  h_C = reinterpret_cast<float *>(malloc(n2 * sizeof(h_C[0])));
-
-  if (h_C == 0) {
+  if (h_C_ref == 0) {
     fprintf(stderr, "!!!! host memory allocation error (C)\n");
     return EXIT_FAILURE;
   }
+  malloc_stop = mysecond();
 
   /* Allocate device memory for the matrices */
+  cuda_malloc_start = malloc_stop;
   if (cudaMallocManaged(reinterpret_cast<void **>(&d_A), n2 * sizeof(d_A[0])) !=
       cudaSuccess) {
     fprintf(stderr, "!!!! device memory allocation error (allocate A)\n");
@@ -179,30 +214,23 @@ int main(int argc, char **argv) {
   h_A = d_A;
   h_B = d_B;
   h_C = d_C;
-
-  cudaStream_t s1;
-  cudaStreamCreate(&s1);
+  cuda_malloc_stop = mysecond();
 
   /* Fill the matrices with test data */
+  init_data_start = cuda_malloc_stop;
   for (i = 0; i < n2; i++) {
     h_A[i] = rand() / static_cast<float>(RAND_MAX);
     h_B[i] = rand() / static_cast<float>(RAND_MAX);
     h_C[i] = rand() / static_cast<float>(RAND_MAX);
   }
+  memcpy(h_C_ref, h_C, n2 * sizeof(h_C[0]));
+  init_data_stop = mysecond();
 
+  h2d_prefetch_start = init_data_stop;
   cudaMemPrefetchAsync(d_A, n2 * sizeof(d_A[0]), dev, s1);
   cudaMemPrefetchAsync(d_B, n2 * sizeof(d_B[0]), dev, s1);
   cudaMemPrefetchAsync(d_C, n2 * sizeof(d_C[0]), dev, s1);
-
-  /* Allocate host memory for reading back the result from device memory */
-  h_C_ref = reinterpret_cast<float *>(malloc(n2 * sizeof(h_C[0])));
-
-  if (h_C_ref == 0) {
-    fprintf(stderr, "!!!! host memory allocation error (C)\n");
-    return EXIT_FAILURE;
-  }
-  memcpy(h_C_ref, h_C, n2 * sizeof(h_C[0]));
-
+  h2d_prefetch_stop = mysecond();
 
 //  /* Initialize the device matrices with the host matrices */
 //  status = cublasSetVector(n2, sizeof(h_A[0]), h_A, 1, d_A, 1);
@@ -226,13 +254,16 @@ int main(int argc, char **argv) {
 //    return EXIT_FAILURE;
 //  }
 
-  double compute_migrate_start = mysecond();
-
   if (validate) {
     /* Performs operation using plain C code */
+    cpu_start = mysecond();
     simple_sgemm(N, alpha, h_A, h_B, beta, h_C_ref);
+    cpu_start = mysecond();
     //h_C_ref = h_C;
   }
+
+  compute_migrate_start = mysecond();
+  gpu_start = compute_migrate_start;
 
   for (int i = 0; i < nIter; i++) {
     /* Performs operation using cublas */
@@ -244,8 +275,12 @@ int main(int argc, char **argv) {
       return EXIT_FAILURE;
     }
   }
-  cudaMemPrefetchAsync(d_C, n2 * sizeof(h_C[0]), dev);
   cudaDeviceSynchronize();
+  gpu_stop = mysecond();
+
+  d2h_prefetch_start = gpu_stop;
+  cudaMemPrefetchAsync(d_C, n2 * sizeof(h_C[0]), cudaCpuDeviceId);
+  d2h_prefetch_stop = mysecond();
 
 //  /* Read the result back */
 //  status = cublasGetVector(n2, sizeof(h_C[0]), d_C, 1, h_C, 1);
@@ -256,6 +291,7 @@ int main(int argc, char **argv) {
 //  }
 
   if (validate) {
+    misc_start = mysecond();
     /* Check result against reference */
     error_norm = 0;
     ref_norm = 0;
@@ -281,20 +317,25 @@ int main(int argc, char **argv) {
       printf("simpleCUBLAS test failed.\n");
       //exit(EXIT_FAILURE);
     }
+    misc_stop = mysecond();
   }
   else {
+    d2h_memcpy_start = mysecond();
     memcpy(h_C_ref, d_C, n2 * sizeof(float));
+    d2h_memcpy_stop = mysecond();
   }
 
-  double compute_migrate_time = mysecond() - compute_migrate_start;
-  printf("compute migrate: %f\n", compute_migrate_time);
+  compute_migrate_stop = mysecond();
 
   /* Memory clean up */
 //  free(h_A);
 //  free(h_B);
 //  free(h_C);
-//  free(h_C_ref);
+  free_start = compute_migrate_stop;
+  free(h_C_ref);
+  free_stop = mysecond();
 
+  cuda_free_start = free_stop;
   if (cudaFree(d_A) != cudaSuccess) {
     fprintf(stderr, "!!!! memory free error (A)\n");
     return EXIT_FAILURE;
@@ -309,12 +350,35 @@ int main(int argc, char **argv) {
     fprintf(stderr, "!!!! memory free error (C)\n");
     return EXIT_FAILURE;
   }
+  cuda_free_stop = mysecond();
 
   /* Shutdown */
+  cublas_destroy_start = cuda_free_stop;
   status = cublasDestroy(handle);
 
   if (status != CUBLAS_STATUS_SUCCESS) {
     fprintf(stderr, "!!!! shutdown error (A)\n");
     return EXIT_FAILURE;
   }
+  cublas_destroy_stop = mysecond();
+
+  application_stop = cublas_destroy_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", (cpu_stop - cpu_start) + (misc_stop - misc_start));
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("misc timer: %f\n", (cublas_init_start - application_start) + (misc_stop - misc_start));
+    printf("cublas init timer: %f\n", cublas_init_stop - cublas_init_start);
+    printf("cublas destroy timer: %f\n", cublas_destroy_stop - cublas_destroy_start);
+    printf("\nAdvise timer: %f\n", (advise_stop - advise_stop) + (advise_read_stop - advise_read_start));
+    printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
+    printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("applicaiton timer: %f\n\n", application_stop - application_start);
 }

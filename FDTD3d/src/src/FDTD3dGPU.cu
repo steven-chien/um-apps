@@ -43,8 +43,10 @@ bool getTargetDeviceGlobalMemSize(memsize_t *result, const int argc, const char 
     return true;
 }
 
-bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv, double *compute_migrate_start)
+bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, const int dimy, const int dimz, const int radius, const int timesteps, const int argc, const char **argv)
 {
+    misc_start = mysecond();
+
     const unsigned long int         outerDimx  = (unsigned long int)dimx + 2 * radius;
     const unsigned long int         outerDimy  = (unsigned long int)dimy + 2 * radius;
     const unsigned long int         outerDimz  = (unsigned long int)dimz + 2 * radius;
@@ -94,6 +96,8 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
 //    checkCudaErrors(cudaMallocManaged((void**)&bufferOut, paddedVolumeSize * sizeof(float)));
 //    checkCudaErrors(cudaMalloc((void **)&bufferIn, paddedVolumeSize * sizeof(float)));
 //    checkCudaErrors(cudaMallocManaged((void**)&bufferIn, paddedVolumeSize * sizeof(float)));
+
+    misc_timer += (mysecond() - misc_start);
 
     // Check for a command-line specified block size
     //int userBlockSize;
@@ -149,8 +153,6 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
     // Copy the coefficients to the device coefficient buffer
     //checkCudaErrors(cudaMemcpyToSymbol(stencil, (void *)coeff, (radius + 1) * sizeof(float)));
 
-    *compute_migrate_start = mysecond();
-
 #ifdef GPU_PROFILING
 
     // Create the events
@@ -169,6 +171,9 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
     // Enqueue start event
     checkCudaErrors(cudaEventRecord(profileStart, 0));
 #endif
+
+    compute_migrate_start = mysecond();
+    gpu_start = compute_migrate_start;
 
     for (int it = 0 ; it < timesteps ; it++)
     {
@@ -195,6 +200,7 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
 
     // Wait for the kernel to complete
     checkCudaErrors(cudaDeviceSynchronize());
+    gpu_stop = mysecond();
 
     // Read the result back, result is in bufferSrc (after final toggle)
 //    checkCudaErrors(cudaMemcpy(output, bufferSrc, volumeSize * sizeof(float), cudaMemcpyDeviceToHost));
@@ -219,13 +225,15 @@ bool fdtdGPU(float **output, float *input, const float *coeff, const int dimx, c
         size_t pointsComputed = dimx * dimy * dimz;
         // Determine throughput
         double throughputM    = 1.0e-6 * (double)pointsComputed / avgElapsedTime;
-        printf("FDTD3d, Throughput = %.4f MPoints/s, Time = %.5f s, Size = %u Points, NumDevsUsed = %u, Blocksize = %u\n",
+        printf("FDTD3d, Throughput = %.4f MPoints/s, Time = %.5f s, Size = %lu Points, NumDevsUsed = %u, Blocksize = %u\n",
                throughputM, avgElapsedTime, pointsComputed, 1, dimBlock.x * dimBlock.y);
     }
 
 #endif
 
+    cuda_free_start = mysecond();
     checkCudaErrors(cudaFree(bufferDst - padding));
+    cuda_free_stop = mysecond();
     // Cleanup
     if (bufferIn)
     {

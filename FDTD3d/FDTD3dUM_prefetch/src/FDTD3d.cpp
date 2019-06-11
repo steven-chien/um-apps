@@ -24,6 +24,40 @@
 
 #include <cuda_runtime.h>
 
+double gpu_start;
+double gpu_stop;
+double cpu_start;
+double cpu_stop;
+double application_start;
+double application_stop;
+double compute_migrate_start;
+double compute_migrate_stop;
+double malloc_start;
+double malloc_stop;
+double free_start;
+double free_stop;
+double cuda_malloc_start;
+double cuda_malloc_stop;
+double cuda_free_start;
+double cuda_free_stop;
+double init_data_start;
+double init_data_stop;
+double h2d_memcpy_start;
+double h2d_memcpy_stop;
+double d2h_memcpy_start;
+double d2h_memcpy_stop;
+double h2d_prefetch_start;
+double h2d_prefetch_stop;
+double d2h_prefetch_start;
+double d2h_prefetch_stop;
+double advise_start;
+double advise_stop;
+double advise_read_start;
+double advise_read_stop;
+double misc_start;
+double misc_stop;
+double misc_timer;
+
 #ifndef CLAMP
 #define CLAMP(a, min, max) ( MIN(max, MAX(a, min)) )
 #endif
@@ -90,6 +124,9 @@ void showHelp(const int argc, const char **argv)
 
 bool runTest(int argc, const char **argv)
 {
+    /////////////////////// START TIMER ///////////////////////////
+    application_start = mysecond();
+
     float *host_output;
     float *device_output;
     float *input;
@@ -137,7 +174,7 @@ bool runTest(int argc, const char **argv)
     // Check dimension is valid
     if (defaultDim < k_dim_min)
     {
-        printf("insufficient device memory (maximum volume on device is %d, must be between %d and %d).\n", defaultDim, k_dim_min, k_dim_max);
+        printf("insufficient device memory (maximum volume on device is %ld, must be between %d and %d).\n", defaultDim, k_dim_min, k_dim_max);
         exit(EXIT_FAILURE);
     }
     else if (defaultDim > k_dim_max)
@@ -203,14 +240,19 @@ bool runTest(int argc, const char **argv)
     cudaStreamCreate(&s1);
 
     // Allocate memory
+    malloc_start = mysecond();
     host_output = (float *)calloc(volumeSize, sizeof(float));
+    malloc_stop = mysecond();
     //input       = (float *)malloc(volumeSize * sizeof(float));
+    cuda_malloc_start = malloc_stop;
     cudaMallocManaged((void**)&device_output, paddedVolumeSize * sizeof(float));
     cudaMallocManaged((void**)&input, sizeof(float)*paddedVolumeSize);
     //coeff       = (float *)malloc((radius + 1) * sizeof(float));
     cudaMallocManaged((void**)&coeff, sizeof(float)*(radius+1));
+    cuda_malloc_stop = mysecond();
 
     // Create coefficients
+    init_data_start = cuda_malloc_stop;
     for (int i = 0 ; i <= radius ; i++)
     {
         coeff[i] = 0.1f;
@@ -220,35 +262,34 @@ bool runTest(int argc, const char **argv)
     printf(" generateRandomData\n\n");
     generateRandomData(input+padding, outerDimx, outerDimy, outerDimz, lowerBound, upperBound);
     memcpy(device_output+padding, input+padding, sizeof(float) * volumeSize);
-    printf("FDTD on %d x %d x %d volume with symmetric filter radius %d for %d timesteps...\n\n", dimx, dimy, dimz, radius, timesteps);
+    init_data_stop = mysecond();
+    printf("FDTD on %ld x %ld x %ld volume with symmetric filter radius %ld for %d timesteps...\n\n", dimx, dimy, dimz, radius, timesteps);
 
+    h2d_prefetch_start = mysecond();
     cudaMemPrefetchAsync(coeff, sizeof(float)*(radius+1), devID, s1);
     cudaMemPrefetchAsync(input, sizeof(float)*paddedVolumeSize, devID, s1);
     cudaMemPrefetchAsync(device_output, sizeof(float)*paddedVolumeSize, devID, s1);
-
-    double compute_migrate_start = 0.0;
+    h2d_prefetch_stop = mysecond();
 
     if (validate) {
         // Allocate memory
         //device_output = (float *)calloc(volumeSize, sizeof(float));
-        double cpu_start = mysecond();
+        cpu_start = mysecond();
         // Execute on the host
         printf("fdtdReference...\n");
         fdtdReference(host_output, input+padding, coeff, dimx, dimy, dimz, radius, timesteps);
         printf("fdtdReference complete\n");
-        double elapsedtime = mysecond() - cpu_start;
-        printf("cpu time: %f\n", elapsedtime);
+	cpu_stop = mysecond();
     }
 
     // Execute on the device
-    double gpu_start = mysecond();
     printf("fdtdGPU...\n");
-    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv, &compute_migrate_start);
+    fdtdGPU(&device_output, input, coeff, dimx, dimy, dimz, radius, timesteps, argc, argv);
     printf("fdtdGPU complete\n");
-    double gpuElapsedTime = mysecond() - gpu_start;
-    printf("gpu time: %f\n", gpuElapsedTime);
 
+    d2h_prefetch_start = mysecond();
     cudaMemPrefetchAsync(device_output, sizeof(float)*volumeSize, cudaCpuDeviceId);
+    d2h_prefetch_stop = mysecond();
 
     if (validate) {
         // Compare the results
@@ -257,11 +298,28 @@ bool runTest(int argc, const char **argv)
         return compareData(device_output, host_output, dimx, dimy, dimz, radius, tolerance);
     }
     else {
+	d2h_memcpy_start = mysecond();
         memcpy(host_output, device_output, sizeof(float) * volumeSize);
+	d2h_memcpy_stop = mysecond();
     }
 
-    double compute_migrate_time = mysecond() - compute_migrate_start;
-    printf("compute migrate time: %f\n", compute_migrate_time);
+    compute_migrate_stop = mysecond();
+    application_stop = compute_migrate_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("misc timer: %f\n", malloc_start - application_start + misc_timer);
+    printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
+    printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+    //printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("\nD2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("applicaiton timer: %f\n\n", application_stop - application_start);
 
     return 0;
 }

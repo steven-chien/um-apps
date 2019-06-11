@@ -15,11 +15,12 @@ cpupower frequency-set --governor performance
 
 cd ${base_path}/FDTD3d/FDTD3d
 size=$size_in_memory
-for i in `seq 0 ${iter}`; do
-	./FDTD3d -dimx=${size} -dimy=${size} -dimz=${size} > run_normal_${i}.txt 2>&1
-done
+#for i in `seq 0 ${iter}`; do
+#	./FDTD3d -dimx=${size} -dimy=${size} -dimz=${size} > run_normal_${i}.txt 2>&1
+#done
 
-for version in FDTD3dUM FDTD3dUM_hint FDTD3dUM_prefetch FDTD3dUM_hint_prefetch; do
+#for version in FDTD3dUM FDTD3dUM_hint FDTD3dUM_prefetch FDTD3dUM_hint_prefetch; do
+for version in FDTD3dUM_hint FDTD3dUM_hint_prefetch; do
 	cd ${base_path}/FDTD3d/${version}
 	size=$size_in_memory
 	for i in `seq 0 ${iter}`; do

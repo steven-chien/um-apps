@@ -33,6 +33,39 @@
 
 #include "convolutionFFT2D_common.h"
 
+double gpu_start;
+double gpu_stop;
+double cpu_start;
+double cpu_stop;
+double application_start;
+double application_stop;
+double compute_migrate_start;
+double compute_migrate_stop;
+double malloc_start;
+double malloc_stop;
+double free_start;
+double free_stop;
+double cuda_malloc_start;
+double cuda_malloc_stop;
+double cuda_free_start;
+double cuda_free_stop;
+double init_data_start;
+double init_data_stop;
+double h2d_memcpy_start;
+double h2d_memcpy_stop;
+double d2h_memcpy_start;
+double d2h_memcpy_stop;
+double h2d_prefetch_start;
+double h2d_prefetch_stop;
+double d2h_prefetch_start;
+double d2h_prefetch_stop;
+double advise_start;
+double advise_stop;
+double cufft_init_start;
+double cufft_init_stop;
+double cufft_destroy_start;
+double cufft_destroy_stop;
+
 //#define DATA_H 8000
 //#define DATA_W 8000
 long unsigned int DATA_H = 8000;
@@ -85,6 +118,9 @@ float getRand(void)
 
 bool test0(void)
 {
+    /////////////////////// START TIMER ///////////////////////////
+    application_start = mysecond();
+
     float
     *h_Data,
     *h_Kernel,
@@ -122,11 +158,15 @@ bool test0(void)
     const int    fftW = snapTransformSize(dataW + kernelW - 1);
 
     printf("...allocating memory\n");
+    malloc_start = mysecond();
     h_Data      = (float *)malloc(dataH   * dataW * sizeof(float));
     h_Kernel    = (float *)malloc(kernelH * kernelW * sizeof(float));
     h_ResultCPU = (float *)malloc(dataH   * dataW * sizeof(float));
     h_ResultGPU = (float *)malloc(fftH    * fftW * sizeof(float));
+    malloc_stop = mysecond();
 
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2 + 1) * sizeof(fComplex)+fftH * (fftW / 2 + 1) * sizeof(fComplex))/1048576.0);
+    cuda_malloc_start = mysecond();
     checkCudaErrors(cudaMalloc((void **)&d_Data,   dataH   * dataW   * sizeof(float)));
     checkCudaErrors(cudaMalloc((void **)&d_Kernel, kernelH * kernelW * sizeof(float)));
 
@@ -135,10 +175,15 @@ bool test0(void)
 
     checkCudaErrors(cudaMalloc((void **)&d_DataSpectrum,   fftH * (fftW / 2 + 1) * sizeof(fComplex)));
     checkCudaErrors(cudaMalloc((void **)&d_KernelSpectrum, fftH * (fftW / 2 + 1) * sizeof(fComplex)));
-    checkCudaErrors(cudaMemset(d_KernelSpectrum, 0, fftH * (fftW / 2 + 1) * sizeof(fComplex)));
+    cuda_malloc_stop = mysecond();
 
     printf("...generating random input data\n");
     srand(2010);
+
+    init_data_start = mysecond();
+    checkCudaErrors(cudaMemset(d_KernelSpectrum, 0, fftH * (fftW / 2 + 1) * sizeof(fComplex)));
+    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
+    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
 
     for (int i = 0; i < dataH * dataW; i++)
     {
@@ -149,18 +194,23 @@ bool test0(void)
     {
         h_Kernel[i] = getRand();
     }
+    init_data_stop = mysecond();
 
     printf("...creating R2C & C2R FFT plans for %i x %i\n", fftH, fftW);
+    cufft_init_start = init_data_stop;
     checkCudaErrors(cufftPlan2d(&fftPlanFwd, fftH, fftW, CUFFT_R2C));
     checkCudaErrors(cufftPlan2d(&fftPlanInv, fftH, fftW, CUFFT_C2R));
+    cufft_init_stop = mysecond();
 
-    printf("...uploading to GPU and padding convolution kernel and input data\n");
+    printf("...uploading to GPinit_data_stopU and padding convolution kernel and input data\n");
+    h2d_memcpy_start = cufft_init_stop;
     checkCudaErrors(cudaMemcpy(d_Kernel, h_Kernel, kernelH * kernelW * sizeof(float), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMemcpy(d_Data,   h_Data,   dataH   * dataW *   sizeof(float), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
-    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
+    h2d_memcpy_stop = mysecond();
 
-    double migrate_compute_start = mysecond();
+    compute_migrate_start = h2d_memcpy_stop;
+
+    gpu_start = h2d_memcpy_stop;
 
     padKernel(
         d_PaddedKernel,
@@ -193,22 +243,24 @@ bool test0(void)
 
     printf("...running GPU FFT convolution: ");
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkResetTimer(&hTimer);
-    sdkStartTimer(&hTimer);
+    double conv_start = mysecond();
     checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_PaddedData, (cufftComplex *)d_DataSpectrum));
     modulateAndNormalize(d_DataSpectrum, d_KernelSpectrum, fftH, fftW, 1);
     checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_DataSpectrum, (cufftReal *)d_PaddedData));
 
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkStopTimer(&hTimer);
-    double gpuTime = sdkGetTimerValue(&hTimer);
+    gpu_stop = mysecond();
+    double gpuTime = (gpu_stop - conv_start) * 1000.0;
     printf("%f MPix/s (%f ms)\n", (double)dataH * (double)dataW * 1e-6 / (gpuTime * 0.001), gpuTime);
 
     printf("...reading back GPU convolution results\n");
+    d2h_memcpy_start = mysecond();
     checkCudaErrors(cudaMemcpy(h_ResultGPU, d_PaddedData, fftH * fftW * sizeof(float), cudaMemcpyDeviceToHost));
+    d2h_memcpy_stop = mysecond();
 
     if (validate) {
         printf("...running reference CPU convolution\n");
+	cpu_start = mysecond();
         convolutionClampToBorderCPU(
             h_ResultCPU,
             h_Data,
@@ -247,38 +299,62 @@ bool test0(void)
         printf("rel L2 = %E (max delta = %E)\n", L2norm, sqrt(max_delta_ref));
         bRetVal = (L2norm < 1e-6) ? true : false;
         printf(bRetVal ? "L2norm Error OK\n" : "L2norm Error too high!\n");
+	cpu_stop = mysecond();
     }
-    else {
-	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
-    }
+//    else {
+//	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
+//    }
 
-    double migrate_compute_time = mysecond() - migrate_compute_start;
-    printf("0: migrate compute: %f\n", migrate_compute_time);
-
+    compute_migrate_stop = mysecond();
 
     printf("...shutting down\n");
-    sdkDeleteTimer(&hTimer);
 
+    cufft_destroy_start = compute_migrate_stop;
     checkCudaErrors(cufftDestroy(fftPlanInv));
     checkCudaErrors(cufftDestroy(fftPlanFwd));
+    cufft_destroy_stop = mysecond();
 
+    cuda_free_start = cufft_destroy_stop;
     checkCudaErrors(cudaFree(d_DataSpectrum));
     checkCudaErrors(cudaFree(d_KernelSpectrum));
     checkCudaErrors(cudaFree(d_PaddedData));
     checkCudaErrors(cudaFree(d_PaddedKernel));
     checkCudaErrors(cudaFree(d_Data));
     checkCudaErrors(cudaFree(d_Kernel));
+    cuda_free_stop = mysecond();
 
+    free_start = cuda_free_stop;
     free(h_ResultGPU);
     free(h_ResultCPU);
     free(h_Data);
     free(h_Kernel);
+    free_stop = mysecond();
+
+    application_stop = free_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("misc timer: %f\n", malloc_start - application_start);
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncufft init timer: %f\n", cufft_init_stop - cufft_init_start);
+    printf("cufft destroy timer: %f\n", cufft_destroy_stop - cufft_destroy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("application timer: %f\n\n", application_stop - application_start);
 
     return bRetVal;
 }
 
 bool  test1(void)
 {
+    /////////////////////// START TIMER ///////////////////////////
+    application_start = mysecond();
+
     float
     *h_Data,
     *h_Kernel,
@@ -317,11 +393,15 @@ bool  test1(void)
     const int    fftW = snapTransformSize(dataW + kernelW - 1);
 
     printf("...allocating memory\n");
+    malloc_start = mysecond();
     h_Data      = (float *)malloc(dataH   * dataW * sizeof(float));
     h_Kernel    = (float *)malloc(kernelH * kernelW * sizeof(float));
     h_ResultCPU = (float *)malloc(dataH   * dataW * sizeof(float));
     h_ResultGPU = (float *)malloc(fftH    * fftW * sizeof(float));
+    malloc_stop = mysecond();
 
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)+fftH * (fftW / 2 + fftPadding) * sizeof(fComplex))/1048576.0);
+    cuda_malloc_start = mysecond();
     checkCudaErrors(cudaMalloc((void **)&d_Data,   dataH   * dataW   * sizeof(float)));
     checkCudaErrors(cudaMalloc((void **)&d_Kernel, kernelH * kernelW * sizeof(float)));
 
@@ -332,9 +412,14 @@ bool  test1(void)
     checkCudaErrors(cudaMalloc((void **)&d_KernelSpectrum0, fftH * (fftW / 2) * sizeof(fComplex)));
     checkCudaErrors(cudaMalloc((void **)&d_DataSpectrum,    fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)));
     checkCudaErrors(cudaMalloc((void **)&d_KernelSpectrum,  fftH * (fftW / 2 + fftPadding) * sizeof(fComplex)));
+    cuda_malloc_stop = mysecond();
 
     printf("...generating random input data\n");
     srand(2010);
+
+    init_data_start = mysecond();
+    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
+    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
 
     for (int i = 0; i < dataH * dataW; i++)
     {
@@ -345,17 +430,21 @@ bool  test1(void)
     {
         h_Kernel[i] = getRand();
     }
+    init_data_stop = mysecond();
 
     printf("...creating C2C FFT plan for %i x %i\n", fftH, fftW / 2);
+    cufft_init_start = init_data_stop;
     checkCudaErrors(cufftPlan2d(&fftPlan, fftH, fftW / 2, CUFFT_C2C));
+    cufft_init_stop = mysecond();
 
     printf("...uploading to GPU and padding convolution kernel and input data\n");
+    h2d_memcpy_start = cufft_init_stop;
     checkCudaErrors(cudaMemcpy(d_Data,   h_Data,   dataH   * dataW *   sizeof(float), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMemcpy(d_Kernel, h_Kernel, kernelH * kernelW * sizeof(float), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
-    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
+    h2d_memcpy_stop = mysecond();
 
-    double migrate_compute_start = mysecond();
+    compute_migrate_start = h2d_memcpy_stop;
+    gpu_start = h2d_memcpy_stop;
 
     padDataClampToBorder(
         d_PaddedData,
@@ -392,8 +481,7 @@ bool  test1(void)
 
     printf("...running GPU FFT convolution: ");
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkResetTimer(&hTimer);
-    sdkStartTimer(&hTimer);
+    double conv_start = mysecond();
 
     checkCudaErrors(cufftExecC2C(fftPlan, (cufftComplex *)d_PaddedData, (cufftComplex *)d_DataSpectrum0, FFT_DIR));
 
@@ -404,12 +492,14 @@ bool  test1(void)
     checkCudaErrors(cufftExecC2C(fftPlan, (cufftComplex *)d_DataSpectrum0, (cufftComplex *)d_PaddedData, -FFT_DIR));
 
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkStopTimer(&hTimer);
-    double gpuTime = sdkGetTimerValue(&hTimer);
+    gpu_stop = mysecond();
+    double gpuTime = (gpu_stop - conv_start) * 1000.0;
     printf("%f MPix/s (%f ms)\n", (double)dataH * (double)dataW * 1e-6 / (gpuTime * 0.001), gpuTime);
 
     printf("...reading back GPU FFT results\n");
+    d2h_memcpy_start = mysecond();
     checkCudaErrors(cudaMemcpy(h_ResultGPU, d_PaddedData, fftH * fftW * sizeof(float), cudaMemcpyDeviceToHost));
+    d2h_memcpy_stop = mysecond();
 
     if (validate) {
         printf("...running reference CPU convolution\n");
@@ -452,17 +542,18 @@ bool  test1(void)
         bRetVal = (L2norm < 1e-6) ? true : false;
         printf(bRetVal ? "L2norm Error OK\n" : "L2norm Error too high!\n");
     }
-    else {
-	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
-    }
+//    else {
+//	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
+//    }
 
-    double migrate_compute_time = mysecond() - migrate_compute_start;
-    printf("1: migrate compute: %f\n", migrate_compute_time);
+    compute_migrate_stop = mysecond();
 
     printf("...shutting down\n");
-    sdkDeleteTimer(&hTimer);
+    cufft_destroy_start = compute_migrate_stop;
     checkCudaErrors(cufftDestroy(fftPlan));
+    cufft_destroy_stop = mysecond();
 
+    cuda_free_start = cufft_destroy_stop;
     checkCudaErrors(cudaFree(d_KernelSpectrum));
     checkCudaErrors(cudaFree(d_DataSpectrum));
     checkCudaErrors(cudaFree(d_KernelSpectrum0));
@@ -471,17 +562,42 @@ bool  test1(void)
     checkCudaErrors(cudaFree(d_PaddedData));
     checkCudaErrors(cudaFree(d_Kernel));
     checkCudaErrors(cudaFree(d_Data));
+    cuda_free_stop = mysecond();
 
+    free_start = cuda_free_stop;
     free(h_ResultGPU);
     free(h_ResultCPU);
     free(h_Kernel);
     free(h_Data);
+    free_stop = mysecond();
+
+    application_stop = free_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("misc timer: %f\n", malloc_start - application_start);
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncufft init timer: %f\n", cufft_init_stop - cufft_init_start);
+    printf("cufft destroy timer: %f\n", cufft_destroy_stop - cufft_destroy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("application timer: %f\n\n", application_stop - application_start);
+
+    sdkDeleteTimer(&hTimer);
 
     return bRetVal;
 }
 
 bool test2(void)
 {
+    /////////////////////// START TIMER ///////////////////////////
+    application_start = mysecond();
+
     float
     *h_Data,
     *h_Kernel,
@@ -518,11 +634,15 @@ bool test2(void)
     const int fftW = snapTransformSize(dataW + kernelW - 1);
 
     printf("...allocating memory\n");
+    malloc_start = mysecond();
     h_Data      = (float *)malloc(dataH   * dataW * sizeof(float));
     h_Kernel    = (float *)malloc(kernelH * kernelW * sizeof(float));
     h_ResultCPU = (float *)malloc(dataH   * dataW * sizeof(float));
     h_ResultGPU = (float *)malloc(fftH    * fftW * sizeof(float));
+    malloc_stop = mysecond();
 
+    printf("%f MiB\n", (dataH   * dataW   * sizeof(float)+kernelH * kernelW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * fftW * sizeof(float)+fftH * (fftW / 2) * sizeof(fComplex)+fftH * (fftW / 2) * sizeof(fComplex))/1048576.0);
+    cuda_malloc_start = mysecond();
     checkCudaErrors(cudaMalloc((void **)&d_Data,   dataH   * dataW   * sizeof(float)));
     checkCudaErrors(cudaMalloc((void **)&d_Kernel, kernelH * kernelW * sizeof(float)));
 
@@ -531,9 +651,14 @@ bool test2(void)
 
     checkCudaErrors(cudaMalloc((void **)&d_DataSpectrum0,   fftH * (fftW / 2) * sizeof(fComplex)));
     checkCudaErrors(cudaMalloc((void **)&d_KernelSpectrum0, fftH * (fftW / 2) * sizeof(fComplex)));
+    cuda_malloc_stop = mysecond();
 
     printf("...generating random input data\n");
     srand(2010);
+
+    init_data_start = mysecond();
+    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
+    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
 
     for (int i = 0; i < dataH * dataW; i++)
     {
@@ -544,17 +669,21 @@ bool test2(void)
     {
         h_Kernel[i] = getRand();
     }
+    init_data_stop = mysecond();
 
     printf("...creating C2C FFT plan for %i x %i\n", fftH, fftW / 2);
+    cufft_init_start = init_data_stop;
     checkCudaErrors(cufftPlan2d(&fftPlan, fftH, fftW / 2, CUFFT_C2C));
+    cufft_init_stop = mysecond();
 
     printf("...uploading to GPU and padding convolution kernel and input data\n");
+    h2d_memcpy_start = cufft_init_stop;
     checkCudaErrors(cudaMemcpy(d_Data,   h_Data,   dataH   * dataW *   sizeof(float), cudaMemcpyHostToDevice));
     checkCudaErrors(cudaMemcpy(d_Kernel, h_Kernel, kernelH * kernelW * sizeof(float), cudaMemcpyHostToDevice));
-    checkCudaErrors(cudaMemset(d_PaddedData,   0, fftH * fftW * sizeof(float)));
-    checkCudaErrors(cudaMemset(d_PaddedKernel, 0, fftH * fftW * sizeof(float)));
+    h2d_memcpy_stop = mysecond();
 
-    double migrate_compute_start = mysecond();
+    compute_migrate_start = h2d_memcpy_stop;
+    gpu_start = h2d_memcpy_stop;
 
     padDataClampToBorder(
         d_PaddedData,
@@ -590,20 +719,21 @@ bool test2(void)
 
     printf("...running GPU FFT convolution: ");
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkResetTimer(&hTimer);
-    sdkStartTimer(&hTimer);
+    double conv_start = mysecond();
 
     checkCudaErrors(cufftExecC2C(fftPlan, (cufftComplex *)d_PaddedData, (cufftComplex *)d_DataSpectrum0, FFT_DIR));
     spProcess2D(d_DataSpectrum0, d_DataSpectrum0, d_KernelSpectrum0, fftH, fftW / 2, FFT_DIR);
     checkCudaErrors(cufftExecC2C(fftPlan, (cufftComplex *)d_DataSpectrum0, (cufftComplex *)d_PaddedData, -FFT_DIR));
 
     checkCudaErrors(cudaDeviceSynchronize());
-    sdkStopTimer(&hTimer);
-    double gpuTime = sdkGetTimerValue(&hTimer);
+    gpu_stop = mysecond();
+    double gpuTime = (gpu_stop - conv_start) * 1000.0;
     printf("%f MPix/s (%f ms)\n", (double)dataH * (double)dataW * 1e-6 / (gpuTime * 0.001), gpuTime);
 
     printf("...reading back GPU FFT results\n");
+    d2h_memcpy_start = mysecond();
     checkCudaErrors(cudaMemcpy(h_ResultGPU, d_PaddedData, fftH * fftW * sizeof(float), cudaMemcpyDeviceToHost));
+    d2h_memcpy_stop = mysecond();
 
     if (validate) {
         printf("...running reference CPU convolution\n");
@@ -648,27 +778,51 @@ bool test2(void)
         bRetVal = (L2norm < 1e-6) ? true : false;
         printf(bRetVal ? "L2norm Error OK\n" : "L2norm Error too high!\n");
     }
-    else {
-	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
-    }
-    double migrate_compute_time = mysecond() - migrate_compute_start;
-    printf("2: migrate compute: %f\n", migrate_compute_time);
+//    else {
+//	memcpy(h_ResultCPU, h_ResultGPU, dataH   * dataW * sizeof(float));
+//    }
+
+    compute_migrate_stop = mysecond();
 
     printf("...shutting down\n");
-    sdkDeleteTimer(&hTimer);
+    cufft_destroy_start = compute_migrate_stop;
     checkCudaErrors(cufftDestroy(fftPlan));
+    cufft_destroy_stop = mysecond();
 
+    cuda_free_start = cufft_destroy_stop;
     checkCudaErrors(cudaFree(d_KernelSpectrum0));
     checkCudaErrors(cudaFree(d_DataSpectrum0));
     checkCudaErrors(cudaFree(d_PaddedKernel));
     checkCudaErrors(cudaFree(d_PaddedData));
     checkCudaErrors(cudaFree(d_Kernel));
     checkCudaErrors(cudaFree(d_Data));
+    cuda_free_stop = mysecond();
 
+    free_start = cuda_free_stop;
     free(h_ResultGPU);
     free(h_ResultCPU);
     free(h_Kernel);
     free(h_Data);
+    free_stop = mysecond();
+
+    application_stop = free_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("misc timer: %f\n", malloc_start - application_start);
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncufft init timer: %f\n", cufft_init_stop - cufft_init_start);
+    printf("cufft destroy timer: %f\n", cufft_destroy_stop - cufft_destroy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("application timer: %f\n\n", application_stop - application_start);
+
+    sdkDeleteTimer(&hTimer);
 
     return bRetVal;
 }
@@ -701,44 +855,29 @@ int main(int argc, char **argv)
     findCudaDevice(argc, (const char **)argv);
 
     int nFailures = 0;
-    StopWatchInterface *hTimer = NULL;
-    sdkCreateTimer(&hTimer);
-    double elapsedTime;
 
     for (int i = 0; i < fft0Iter; i++) {
-        sdkStartTimer(&hTimer);
+        printf("===============================================================\n");
         if (!test0())
         {
             nFailures++;
         }
-        sdkStopTimer(&hTimer);
-        elapsedTime = sdkGetTimerValue(&hTimer);
-        sdkResetTimer(&hTimer);
-	printf("0: %d: %f\n", i, elapsedTime);
     }
 
     for (int i = 0; i < fft1Iter; i++) {
-        sdkStartTimer(&hTimer);
+        printf("===============================================================\n");
         if (!test1())
         {
             nFailures++;
         }
-        sdkStopTimer(&hTimer);
-        elapsedTime = sdkGetTimerValue(&hTimer);
-        sdkResetTimer(&hTimer);
-	printf("1: %d: %f\n", i, elapsedTime);
     }
 
     for (int i = 0; i < fft2Iter; i++) {
-        sdkStartTimer(&hTimer);
+        printf("===============================================================\n");
         if (!test2())
         {
             nFailures++;
         }
-        sdkStopTimer(&hTimer);
-        elapsedTime = sdkGetTimerValue(&hTimer);
-        sdkResetTimer(&hTimer);
-	printf("2: %d: %f\n", i, elapsedTime);
     }
 
     printf("Test Summary: %d errors\n", nFailures);

@@ -34,6 +34,40 @@
 #include <helper_functions.h>
 #include <helper_cuda.h>
 
+double gpu_start;
+double gpu_stop;
+double cpu_start;
+double cpu_stop;
+double application_start;
+double application_stop;
+double compute_migrate_start;
+double compute_migrate_stop;
+double malloc_start;
+double malloc_stop;
+double free_start;
+double free_stop;
+double cuda_malloc_start;
+double cuda_malloc_stop;
+double cuda_free_start;
+double cuda_free_stop;
+double init_data_start;
+double init_data_stop;
+double h2d_memcpy_start;
+double h2d_memcpy_stop;
+double d2h_memcpy_start;
+double d2h_memcpy_stop;
+double h2d_prefetch_start;
+double h2d_prefetch_stop;
+double d2h_prefetch_start;
+double d2h_prefetch_stop;
+double advise_start;
+double advise_stop;
+double advise_read_start;
+double advise_read_stop;
+double misc_start;
+double misc_stop;
+double misc_timer;
+
 int nIter = 10;
 bool validate = false;
 
@@ -137,32 +171,21 @@ int MatrixMultiply(int argc, char **argv,
                    const dim3 &dimsB) {
     int devID = findCudaDevice(argc, (const char **)argv);
 
+    application_start = mysecond();
+
+    cuda_malloc_start = application_start;
     // Allocate host memory for matrices A and B
     unsigned long int size_A = dimsA.x * dimsA.y;
     unsigned long int mem_size_A = sizeof(float) * size_A;
 //    float *h_A = reinterpret_cast<float *>(malloc(mem_size_A));
     float *h_A;
     checkCudaErrors(cudaMallocManaged(reinterpret_cast<void **>(&h_A), mem_size_A));
-    cudaMemAdvise(h_A, mem_size_A, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(h_A, mem_size_A, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
 
     unsigned long int size_B = dimsB.x * dimsB.y;
     unsigned long int mem_size_B = sizeof(float) * size_B;
 //    float *h_B = reinterpret_cast<float *>(malloc(mem_size_B));
     float *h_B;
     checkCudaErrors(cudaMallocManaged(reinterpret_cast<void **>(&h_B), mem_size_B));
-    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
-
-    // Initialize host memory
-    const float valB = 0.01f;
-    ConstantInit(h_A, size_A, 1.0f);
-    cudaMemAdvise(h_A, mem_size_B, cudaMemAdviseSetReadMostly, devID);
-    ConstantInit(h_B, size_B, valB);
-    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetReadMostly, devID);
-
-    // Allocate device memory
-    float *d_A, *d_B, *d_C;
 
     // Allocate host matrix C
     dim3 dimsC(dimsB.x, dimsA.y, 1);
@@ -170,20 +193,45 @@ int MatrixMultiply(int argc, char **argv,
 //    float *h_C = reinterpret_cast<float *>(malloc(mem_size_C));
     float *h_C;
     checkCudaErrors(cudaMallocManaged(reinterpret_cast<void **>(&h_C), mem_size_C));
-    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
 
     if (h_C == NULL) {
         fprintf(stderr, "Failed to allocate host matrix C!\n");
         exit(EXIT_FAILURE);
     }
 
-    float *h_C_host = (float*)malloc(mem_size_C);
-    assert(h_C_host);
+    // Allocate device memory
+    float *d_A, *d_B, *d_C;
 
     d_A = h_A;
     d_B = h_B;
     d_C = h_C;
+    cuda_malloc_stop = mysecond();
+
+    malloc_start = cuda_malloc_stop;
+    float *h_C_host = (float*)malloc(mem_size_C);
+    assert(h_C_host);
+    malloc_stop = mysecond();
+
+    advise_start = malloc_stop;
+    cudaMemAdvise(h_A, mem_size_A, cudaMemAdviseSetPreferredLocation, devID);
+    cudaMemAdvise(h_A, mem_size_A, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetPreferredLocation, devID);
+    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetPreferredLocation, devID);
+    cudaMemAdvise(h_C, mem_size_C, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    advise_stop = mysecond();
+
+    // Initialize host memory
+    init_data_start = advise_stop;
+    const float valB = 0.01f;
+    ConstantInit(h_A, size_A, 1.0f);
+    ConstantInit(h_B, size_B, valB);
+    init_data_stop = mysecond();
+
+    advise_read_start = init_data_stop;
+    cudaMemAdvise(h_A, mem_size_B, cudaMemAdviseSetReadMostly, devID);
+    cudaMemAdvise(h_B, mem_size_B, cudaMemAdviseSetReadMostly, devID);
+    advise_read_stop = mysecond();
 
     // copy host memory to device
     //checkCudaErrors(cudaMemcpy(d_A, h_A, mem_size_A, cudaMemcpyHostToDevice));
@@ -194,7 +242,8 @@ int MatrixMultiply(int argc, char **argv,
     dim3 threads(block_size, block_size);
     dim3 grid(dimsB.x / threads.x, dimsA.y / threads.y);
 
-    double compute_migrate_start = mysecond();
+    compute_migrate_start = mysecond();
+    gpu_start = compute_migrate_start;
 
     // Create and start timer
     printf("Computing result using CUDA Kernel...\n");
@@ -242,6 +291,8 @@ int MatrixMultiply(int argc, char **argv,
 
     // Wait for the stop event to complete
     checkCudaErrors(cudaEventSynchronize(stop));
+    gpu_stop = mysecond();
+    misc_start = gpu_stop;
 
     float msecTotal = 0.0f;
     checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
@@ -264,10 +315,13 @@ int MatrixMultiply(int argc, char **argv,
     // Copy result from device to host
     //checkCudaErrors(cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost));
 
-    printf("Checking computed result for correctness: ");
     bool correct = true;
 
+    misc_stop = mysecond();
+    misc_timer = misc_stop - misc_start;
+
     if (validate) {
+        printf("Checking computed result for correctness: ");
         // test relative error by the formula
         //     |<x, y>_cpu - <x,y>_gpu|/<|x|, |y|>  < eps
         double eps = 1.e-6;  // machine zero
@@ -284,23 +338,47 @@ int MatrixMultiply(int argc, char **argv,
                 correct = false;
             }
         }
+        printf("%s\n", correct ? "Result = PASS" : "Result = FAIL");
     }
     else {
+        d2h_memcpy_start = mysecond();
         memcpy(h_C_host, h_C, mem_size_C);
+	d2h_memcpy_stop = mysecond();
     }
 
-    double compute_migrate_time = mysecond() - compute_migrate_start;
-
-    printf("%s\n", correct ? "Result = PASS" : "Result = FAIL");
-    printf("compute migrate time: %f\n", compute_migrate_time);
+    compute_migrate_stop = mysecond();
 
     // Clean up memory
     //free(h_A);
     //free(h_B);
     //free(h_C);
+    cuda_free_start = compute_migrate_stop;
     checkCudaErrors(cudaFree(d_A));
     checkCudaErrors(cudaFree(d_B));
     checkCudaErrors(cudaFree(d_C));
+    cuda_free_stop = mysecond();
+
+    free_start = cuda_free_stop;
+    free(h_C_host);
+    free_stop = mysecond();
+
+    application_stop = free_stop;
+
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
+    printf("CPU Time: %f\n", cpu_stop - cpu_start);
+    printf("malloc timer: %f\n", malloc_stop - malloc_start);
+    printf("free timer: %f\n", free_stop - free_start);
+    printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
+    printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
+    printf("Init data timer: %f\n", init_data_stop - init_data_start);
+    printf("\nAdvise timer: %f\n", (advise_stop - advise_start) + (advise_read_stop - advise_read_start));
+    printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
+    printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+    printf("misc timer: %f\n", misc_timer);
+    //printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("\nD2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
+    printf("application timer: %f\n\n", application_stop - application_start);
 
     printf("\nNOTE: The CUDA Samples are not meant for performance"\
            "measurements. Results may vary when GPU Boost is enabled.\n");
