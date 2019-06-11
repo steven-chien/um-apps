@@ -357,7 +357,7 @@ int main(int argc, char **argv)
 
     application_stop = cuda_free_stop;
 
-    printf("\nGCPU Time: %f\n", gpu_stop - gpu_start);
+    printf("\nGPU Time: %f\n", gpu_stop - gpu_start);
     printf("CPU Time: %f\n", cpu_stop - cpu_start);
     printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
     printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
