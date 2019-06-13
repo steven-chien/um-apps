@@ -32,10 +32,10 @@ for version in romeo_um romeo_um_advise romeo_um_prefetch romeo_um_both; do
 		./${version} -s ${scale} -e ${edge} > run_normal_${version}_${i}.txt 2>&1
 	done
 
-	scale=$scale_oversubscribe
-	edge=$edge_oversubscribe
-
-	for i in `seq 0 ${iter}`; do
-		./${version} -s ${scale} -e ${edge} > run_oversubscribe_${version}_${i}.txt 2>&1
-	done
+#	scale=$scale_oversubscribe
+#	edge=$edge_oversubscribe
+#
+#	for i in `seq 0 ${iter}`; do
+#		./${version} -s ${scale} -e ${edge} > run_oversubscribe_${version}_${i}.txt 2>&1
+#	done
 done
