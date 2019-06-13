@@ -55,7 +55,6 @@ simpleCUBLAS/simpleCUBLAS/simpleCUBLAS
 simpleCUBLAS/simpleCUBLASUM_prefetch/simpleCUBLAS
 simpleCUBLAS/simpleCUBLASUM/simpleCUBLAS
 simpleCUBLAS/simpleCUBLASUM_hint/simpleCUBLAS
-run_fdtd3d.sh
 matrixMul/matrixMul/matrixMul
 matrixMul/matrixMulUM_hint_prefetch/matrixMul
 matrixMul/matrixMulUM_prefetch/matrixMul
@@ -81,7 +80,6 @@ conjugateGradient/conjugateGradientUM_hint/conjugateGradient
 conjugateGradient/conjugateGradient/conjugateGradient
 conjugateGradient/conjugateGradientUM_hint_prefetch/conjugateGradient
 conjugateGradient/conjugateGradientUM_prefetch/conjugateGradient
-run_bs.sh
 run.sh
 .git/hooks/pre-receive.sample
 .git/hooks/applypatch-msg.sample
@@ -104,5 +102,3 @@ convolutionFFT2D/convolutionFFT2DUM_hint/convolutionFFT2D
 convolutionFFT2D/convolutionFFT2DUM/convolutionFFT2D
 convolutionFFT2D/convolutionFFT2D/convolutionFFT2D
 convolutionFFT2D/convolutionFFT2DUM_prefetch/convolutionFFT2D
-run_cg.sh
-run_graph500.sh
