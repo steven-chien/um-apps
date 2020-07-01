@@ -29,40 +29,46 @@
 #include <helper_functions.h>  // helper for shared functions common to CUDA Samples
 #include <helper_cuda.h>       // helper function CUDA error checking and initialization
 
-double gpu_start;
-double gpu_stop;
-double cpu_start;
-double cpu_stop;
-double application_start;
-double application_stop;
-double compute_migrate_start;
-double compute_migrate_stop;
-double malloc_start;
-double malloc_stop;
-double free_start;
-double free_stop;
-double cuda_malloc_start;
-double cuda_malloc_stop;
-double cuda_free_start;
-double cuda_free_stop;
-double init_data_start;
-double init_data_stop;
-double h2d_memcpy_start;
-double h2d_memcpy_stop;
-double d2h_memcpy_start;
-double d2h_memcpy_stop;
-double h2d_prefetch_start;
-double h2d_prefetch_stop;
-double d2h_prefetch_start;
-double d2h_prefetch_stop;
-double advise_start;
-double advise_stop;
-double advise_read_start;
-double advise_read_stop;
-double cublas_init_start;
-double cublas_init_stop;
-double cublas_destroy_start;
-double cublas_destroy_stop;
+static double gpu_start;
+static double gpu_stop;
+static double cpu_start;
+static double cpu_stop;
+static double application_start;
+static double application_stop;
+static double compute_migrate_start;
+static double compute_migrate_stop;
+static double malloc_start;
+static double malloc_stop;
+static double free_start;
+static double free_stop;
+static double cuda_malloc_start;
+static double cuda_malloc_stop;
+static double cuda_free_start;
+static double cuda_free_stop;
+static double init_data_start;
+static double init_data_stop;
+#ifndef CUDA_UM
+static double h2d_memcpy_start;
+static double h2d_memcpy_stop;
+#endif
+static double d2h_memcpy_start;
+static double d2h_memcpy_stop;
+#ifdef CUDA_UM_PREFETCH
+static double h2d_prefetch_start;
+static double h2d_prefetch_stop;
+static double d2h_prefetch_start;
+static double d2h_prefetch_stop;
+#endif
+#ifdef CUDA_UM_ADVISE
+static double advise_start;
+static double advise_stop;
+static double advise_read_start;
+static double advise_read_stop;
+#endif
+static double cublas_init_start;
+static double cublas_init_stop;
+static double cublas_destroy_start;
+static double cublas_destroy_stop;
 
 const char *sSDKname     = "conjugateGradientUM";
 
@@ -117,17 +123,38 @@ double mysecond(){
 
 int main(int argc, char **argv)
 {
+#ifdef CUDA_UM
+    printf("Using CUDA Unified Memory: yes\n");
+#else
+    printf("Using CUDA Unified Memory: no\n");
+#endif
+
+#ifdef CUDA_UM_ADVISE
+    printf("Using CUDA Unified Memory Advise: yes\n");
+#else
+    printf("Using CUDA Unified Memory Advise: no\n");
+#endif
+
+#ifdef CUDA_UM_PREFETCH
+    printf("Using CUDA Unified Memory Prefetch: yes\n");
+#else
+    printf("Using CUDA Unified Memory Prefetch: no\n");
+#endif
+
+
     /////////////////////////////// START TIMER ////////////////////////////////////
     application_start = mysecond();
 
     int N = 0, nz = 0, *I = NULL, *J = NULL;
+    int *h_I = NULL, *h_J = NULL;
+    float *h_x = NULL, *h_r = NULL, *h_val = NULL, *h_rhs = NULL;
     float *val = NULL;
     const float tol = 1e-5f;
     int max_iter = 50;
+    float dot;
     float *x;
     float *rhs;
     float a, b, na, r0, r1;
-    float dot;
     float *r, *p, *Ax;
     int k;
     float alpha, beta, alpham1;
@@ -161,9 +188,29 @@ int main(int argc, char **argv)
     printf("> GPU device has %d Multi-Processors, SM %d.%d compute capabilities\n\n",
            deviceProp.multiProcessorCount, deviceProp.major, deviceProp.minor);
 
+    double start_time = mysecond();
     /* Generate a random tridiagonal symmetric matrix in CSR format */
     //N = 1048576;
 
+#ifndef CUDA_UM
+    malloc_start = mysecond();
+    h_I = (int *)malloc(sizeof(int)*(N+1));
+    h_J = (int *)malloc(sizeof(int)*nz);
+    h_val = (float *)malloc(sizeof(float)*nz);
+    h_x = (float *)malloc(sizeof(float)*N);
+    h_rhs = (float *)malloc(sizeof(float)*N);
+    malloc_stop = mysecond();
+
+    cuda_malloc_start = cublas_init_stop;
+    checkCudaErrors(cudaMalloc((void **)&I, (N+1)*sizeof(int)));
+    checkCudaErrors(cudaMalloc((void **)&J, nz*sizeof(int)));
+    checkCudaErrors(cudaMalloc((void **)&val, nz*sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&x, N*sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&r, N*sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&p, N*sizeof(float)));
+    checkCudaErrors(cudaMalloc((void **)&Ax, N*sizeof(float)));
+    cuda_malloc_stop = mysecond();
+#else
     cuda_malloc_start = mysecond();
     checkCudaErrors(cudaMallocManaged((void **)&I, sizeof(int)*(N+1)));
     checkCudaErrors(cudaMallocManaged((void **)&J, sizeof(int)*nz));
@@ -175,43 +222,77 @@ int main(int argc, char **argv)
     checkCudaErrors(cudaMallocManaged((void **)&p, N*sizeof(float)));
     checkCudaErrors(cudaMallocManaged((void **)&Ax, N*sizeof(float)));
     cuda_malloc_stop = mysecond();
+#endif
 
+#ifdef CUDA_UM_ADVISE
     advise_start = cuda_malloc_stop;
-    cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    checkCudaErrors(cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetAccessedBy, cudaCpuDeviceId));
 
-    cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    checkCudaErrors(cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId));
 
-    cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    checkCudaErrors(cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId));
 
-    cudaMemAdvise(x, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(x, sizeof(float)*N, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId);
+    checkCudaErrors(cudaMemAdvise(x, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(x, sizeof(float)*N, cudaMemAdviseSetAccessedBy, cudaCpuDeviceId));
 
-    cudaMemAdvise(r, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(p, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID);
-    cudaMemAdvise(Ax, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID);
+    checkCudaErrors(cudaMemAdvise(r, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(p, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID));
+    checkCudaErrors(cudaMemAdvise(Ax, sizeof(float)*N, cudaMemAdviseSetPreferredLocation, devID));
     advise_stop = mysecond();
+#endif
 
-    init_data_start = advise_stop;
+    init_data_start = mysecond();
+#ifndef CUDA_UM
+    genTridiag(h_I, h_J, h_val, N, nz);
+#else
     genTridiag(I, J, val, N, nz);
+#endif
 
     for (int i = 0; i < N; i++)
     {
+#ifndef CUDA_UM
+        h_rhs[i] = 1.0;
+        h_x[i] = 0.0;
+#else
         rhs[i] = 1.0;
         x[i] = 0.0;
         r[i] = rhs[i];
+#endif
     }
     init_data_stop = mysecond();
 
+#ifdef CUDA_UM_ADVISE
     advise_read_start = init_data_stop;
-    cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetReadMostly, devID);
-    cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetReadMostly, devID);
-    cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetReadMostly, devID);
+    checkCudaErrors(cudaMemAdvise(I, sizeof(int)*(N+1), cudaMemAdviseSetReadMostly, devID));
+    checkCudaErrors(cudaMemAdvise(J, sizeof(int)*nz, cudaMemAdviseSetReadMostly, devID));
+    checkCudaErrors(cudaMemAdvise(val, sizeof(float)*nz, cudaMemAdviseSetReadMostly, devID));
     advise_read_stop = mysecond();
+#endif
 
-    cublas_init_start = advise_read_stop;
+
+#ifdef CUDA_UM_PREFETCH
+    h2d_prefetch_start = mysecond();
+    cudaMemPrefetchAsync(r, sizeof(float)*N, devID);
+    cudaMemPrefetchAsync(I, sizeof(int)*(N+1), devID);
+    cudaMemPrefetchAsync(J, sizeof(int)*nz, devID);
+    cudaMemPrefetchAsync(val, sizeof(float)*nz, devID);
+    h2d_prefetch_stop = mysecond();
+#endif
+
+#ifndef CUDA_UM
+    h2d_memcpy_start = mysecond();
+    cudaMemcpy(J, h_J, nz*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(I, h_I, (N+1)*sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(val, h_val, nz*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(x, h_x, N*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(r, h_rhs, N*sizeof(float), cudaMemcpyHostToDevice);
+    h2d_memcpy_stop = mysecond();
+#endif
+
+    cublas_init_start = init_data_stop;
     /* Get handle to the CUBLAS context */
     cublasHandle_t cublasHandle = 0;
     cublasStatus_t cublasStatus;
@@ -233,30 +314,11 @@ int main(int argc, char **argv)
 
     cusparseSetMatType(descr,CUSPARSE_MATRIX_TYPE_GENERAL);
     cusparseSetMatIndexBase(descr,CUSPARSE_INDEX_BASE_ZERO);
-    cublas_init_stop = mysecond();
-
-    printf("I:   %p\n", (void*)I);
-    printf("J:   %p\n", (void*)J);
-    printf("val: %p\n", (void*)val);
-    printf("x:   %p\n", (void*)x);
-    printf("rhs: %p\n", (void*)rhs);
-    printf("r:   %p\n", (void*)r);
-    printf("p:   %p\n", (void*)p);
-    printf("Ax   %p\n", (void*)Ax);
 
     cudaDeviceSynchronize();
+    cublas_init_stop = mysecond();
 
-    cudaStream_t s1;
-    cudaStreamCreate(&s1);
-
-    h2d_prefetch_start = mysecond();
-    cudaMemPrefetchAsync(r, sizeof(float)*N, devID, s1);
-    cudaMemPrefetchAsync(I, sizeof(int)*(N+1), devID, s1);
-    cudaMemPrefetchAsync(J, sizeof(int)*nz, devID, s1);
-    cudaMemPrefetchAsync(val, sizeof(float)*nz, devID, s1);
-    h2d_prefetch_stop = mysecond();
-
-    compute_migrate_start = h2d_prefetch_stop;
+    compute_migrate_start = mysecond();
 
     alpha = 1.0;
     alpham1 = -1.0;
@@ -303,21 +365,46 @@ int main(int argc, char **argv)
 
     gpu_stop = mysecond();
 
+#ifndef CUDA_UM
+    d2h_memcpy_start = gpu_stop;
+    cudaMemcpy(h_x, x, N*sizeof(float), cudaMemcpyDeviceToHost);
+    d2h_memcpy_stop = mysecond();
+#endif
+
+#ifdef CUDA_UM_PREFETCH
     d2h_prefetch_start = gpu_stop;
     cudaMemPrefetchAsync(I, sizeof(int)*(N+1), cudaCpuDeviceId);
     cudaMemPrefetchAsync(J, sizeof(int)*nz, cudaCpuDeviceId);
     cudaMemPrefetchAsync(x, sizeof(float)*N, cudaCpuDeviceId);
     cudaMemPrefetchAsync(val, sizeof(float)*nz, cudaCpuDeviceId);
     d2h_prefetch_stop = mysecond();
+#endif
 
-    cpu_start = d2h_prefetch_stop;
+    cpu_start = mysecond();
 
     printf("Final residual: %e\n",sqrt(r1));
 
     fprintf(stdout,"&&&& conjugateGradientUM %s\n", (sqrt(r1) < tol) ? "PASSED" : "FAILED");
 
     float rsum, diff, err = 0.0;
+#ifndef CUDA_UM
+    for (int i = 0; i < N; i++)
+    {
+        rsum = 0.0;
 
+        for (int j = h_I[i]; j < h_I[i+1]; j++)
+        {
+            rsum += h_val[j]*h_x[h_J[j]];
+        }
+
+        diff = fabs(rsum - h_rhs[i]);
+
+        if (diff > err)
+        {
+            err = diff;
+        }
+    }
+#else
     for (int i = 0; i < N; i++)
     {
         rsum = 0.0;
@@ -334,6 +421,7 @@ int main(int argc, char **argv)
             err = diff;
         }
     }
+#endif
 
     cpu_stop = mysecond();
 
@@ -362,12 +450,20 @@ int main(int argc, char **argv)
     printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
     printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
     printf("Init data timer: %f\n", init_data_stop - init_data_start);
-    printf("\ncublas init timer: %f\n", cublas_init_stop - cublas_init_start);
-    printf("cublas destroy timer: %f\n", cublas_destroy_stop - cublas_destroy_start);
-    printf("misc timer: %f\n", cuda_malloc_start - application_start);
+#ifndef CUDA_UM
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+#endif
+#ifdef CUDA_UM_ADVISE
     printf("\nadvise timer: %f\n", (advise_stop - advise_start) + (advise_read_stop - advise_read_start));
+#endif
+#ifdef CUDA_UM_PREFETCH
     printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
     printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+#endif
+    printf("\ncublas init timer: %f\n", cublas_init_stop - cublas_init_start);
+    printf("cublas destroy timer: %f\n", cublas_destroy_stop - cublas_destroy_start);
+//    printf("misc timer: %f\n", cuda_malloc_start - application_start);
     printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
     printf("application timer: %f\n\n", application_stop - application_start);
 

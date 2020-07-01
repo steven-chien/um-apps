@@ -19,22 +19,37 @@
 #include <helper_functions.h>   // helper functions for string parsing
 #include <helper_cuda.h>        // helper functions CUDA error checking and initialization
 
-double application_start;
-double application_stop;
-double compute_migrate_start;
-double compute_migrate_stop;
-double init_data_start;
-double init_data_stop;
-double malloc_start;
-double malloc_stop;
-double free_start;
-double free_stop;
-double cuda_malloc_start;
-double cuda_malloc_stop;
-double cuda_free_start;
-double cuda_free_stop;
-double d2h_memcpy_start;
-double d2h_memcpy_stop;
+static double application_start;
+static double application_stop;
+static double compute_migrate_start;
+static double compute_migrate_stop;
+static double malloc_start;
+static double malloc_stop;
+static double free_start;
+static double free_stop;
+static double cuda_malloc_start;
+static double cuda_malloc_stop;
+static double cuda_free_start;
+static double cuda_free_stop;
+static double init_data_start;
+static double init_data_stop;
+#ifndef CUDA_UM
+static double h2d_memcpy_start;
+static double h2d_memcpy_stop;
+#endif
+// because we trigger migration via std::memcpy
+static double d2h_memcpy_start;
+static double d2h_memcpy_stop;
+#ifdef CUDA_UM_ADVISE
+static double advise_start;
+static double advise_stop;
+#endif
+#ifdef CUDA_UM_PREFETCH
+static double h2d_prefetch_start;
+static double h2d_prefetch_stop;
+static double d2h_prefetch_start;
+static double d2h_prefetch_stop;
+#endif
 
 double mysecond(){
     struct timeval tp;
@@ -95,6 +110,24 @@ const float    VOLATILITY = 0.30f;
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
+#ifdef CUDA_UM
+    printf("Using CUDA Unified Memory: yes\n");
+#else
+    printf("Using CUDA Unified Memory: no\n");
+#endif
+
+#ifdef CUDA_UM_ADVISE
+    printf("Using CUDA Unified Memory Advise: yes\n");
+#else
+    printf("Using CUDA Unified Memory Advise: no\n");
+#endif
+
+#ifdef CUDA_UM_PREFETCH
+    printf("Using CUDA Unified Memory Prefetch: yes\n");
+#else
+    printf("Using CUDA Unified Memory Prefetch: no\n");
+#endif
+
     //////////////////////////////// START APPLICATION TIMER /////////////////////////////////////
     application_start = mysecond();
 
@@ -153,9 +186,27 @@ int main(int argc, char **argv)
     malloc_start = mysecond();
     h_CallResultCPU = (float *)malloc(OPT_SZ);
     h_PutResultCPU  = (float *)malloc(OPT_SZ);
+#ifndef CUDA_UM
+    h_CallResultCPU = (float *)malloc(OPT_SZ);
+    h_PutResultCPU  = (float *)malloc(OPT_SZ);
+    h_CallResultGPU = (float *)malloc(OPT_SZ);
+    h_PutResultGPU  = (float *)malloc(OPT_SZ);
+    h_StockPrice    = (float *)malloc(OPT_SZ);
+    h_OptionStrike  = (float *)malloc(OPT_SZ);
+    h_OptionYears   = (float *)malloc(OPT_SZ);
+#endif
     malloc_stop = mysecond();
 
     printf("...allocating GPU memory for options.\n");
+#ifndef CUDA_UM
+    cuda_malloc_start = mysecond();
+    checkCudaErrors(cudaMalloc((void **)&d_CallResult,   OPT_SZ));
+    checkCudaErrors(cudaMalloc((void **)&d_PutResult,    OPT_SZ));
+    checkCudaErrors(cudaMalloc((void **)&d_StockPrice,   OPT_SZ));
+    checkCudaErrors(cudaMalloc((void **)&d_OptionStrike, OPT_SZ));
+    checkCudaErrors(cudaMalloc((void **)&d_OptionYears,  OPT_SZ));
+    cuda_malloc_stop = mysecond();
+#else
     cuda_malloc_start = mysecond();
     checkCudaErrors(cudaMallocManaged((void **)&d_CallResult,   OPT_SZ));
     checkCudaErrors(cudaMallocManaged((void **)&d_PutResult,    OPT_SZ));
@@ -169,6 +220,7 @@ int main(int argc, char **argv)
     h_StockPrice    = d_StockPrice;
     h_OptionStrike  = d_OptionStrike;
     h_OptionYears   = d_OptionYears;
+#endif
 
     printf("...generating input data in CPU mem.\n");
     srand(5347);
@@ -185,7 +237,36 @@ int main(int argc, char **argv)
     }
     init_data_stop = mysecond();
 
+#ifdef CUDA_UM_ADVISE
+    advise_start = mysecond();
+    cudaMemAdvise(h_StockPrice, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
+    cudaMemAdvise(h_OptionStrike, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
+    cudaMemAdvise(h_OptionYears, OPT_SZ, cudaMemAdviseSetReadMostly, devID);
+    advise_stop = mysecond();
+#endif
+
+#ifndef CUDA_UM
+    printf("...copying input data to GPU mem.\n");
+    //Copy options data to GPU memory for further processing
+    h2d_memcpy_start = mysecond();
+    checkCudaErrors(cudaMemcpy(d_StockPrice,  h_StockPrice,   OPT_SZ, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_OptionStrike, h_OptionStrike,  OPT_SZ, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(d_OptionYears,  h_OptionYears,   OPT_SZ, cudaMemcpyHostToDevice));
+    h2d_memcpy_stop = mysecond();
+#endif
     printf("Data init done.\n\n");
+
+#ifdef CUDA_UM_PREFETCH
+    printf("...prefetching input data to GPU mem.\n");
+    h2d_prefetch_start = mysecond();
+    checkCudaErrors(cudaMemPrefetchAsync(h_StockPrice, OPT_SZ, devID));
+    checkCudaErrors(cudaMemPrefetchAsync(h_OptionStrike, OPT_SZ, devID));
+    checkCudaErrors(cudaMemPrefetchAsync(h_OptionYears, OPT_SZ, devID));
+
+    checkCudaErrors(cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, devID));
+    checkCudaErrors(cudaMemPrefetchAsync(h_PutResultGPU, OPT_SZ, devID));
+    h2d_prefetch_stop = mysecond();
+#endif
 
     printf("Executing Black-Scholes GPU kernel (%i iterations)...\n", NUM_ITERATIONS);
     //checkCudaErrors(cudaDeviceSynchronize());
@@ -208,8 +289,16 @@ int main(int argc, char **argv)
     }
 
     checkCudaErrors(cudaDeviceSynchronize());
+
     gpuTotalTime = (mysecond() - compute_migrate_start) * 1000.0;
     gpuTime = gpuTotalTime / NUM_ITERATIONS;
+
+#ifdef CUDA_UM_PREFETCH
+    d2h_prefetch_start = mysecond();
+    checkCudaErrors(cudaMemPrefetchAsync(h_CallResultGPU, OPT_SZ, cudaCpuDeviceId));
+    checkCudaErrors(cudaMemPrefetchAsync(h_PutResultGPU, OPT_SZ, cudaCpuDeviceId));
+    d2h_prefetch_stop = mysecond();
+#endif
 
     //Both call and put is calculated
     printf("Options count             : %ld    \n", 2 * OPT_N);
@@ -219,6 +308,15 @@ int main(int argc, char **argv)
 
     printf("BlackScholes, Throughput = %.4f GOptions/s, Time = %.5f s, Size = %lu options, NumDevsUsed = %u, Workgroup = %u\n",
            (((double)(2.0 * OPT_N) * 1.0E-9) / (gpuTime * 1.0E-3)), gpuTime*1e-3, (2 * OPT_N), 1, 128);
+
+#ifndef CUDA_UM
+    printf("\nReading back GPU results...\n");
+    //Read back GPU results to compare them to CPU results
+    d2h_memcpy_start = mysecond();
+    checkCudaErrors(cudaMemcpy(h_CallResultGPU, d_CallResult, OPT_SZ, cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(h_PutResultGPU,  d_PutResult,  OPT_SZ, cudaMemcpyDeviceToHost));
+    d2h_memcpy_stop = mysecond();
+#endif
 
     if (validate) {
         printf("Checking the results...\n");
@@ -272,16 +370,19 @@ int main(int argc, char **argv)
     }
     else {
         /* fetch back gpu results to trigger migration */
+#ifdef CUDA_UM
         d2h_memcpy_start = mysecond();
         memcpy(h_CallResultCPU, h_CallResultGPU, OPT_SZ);
         memcpy(h_PutResultCPU, h_PutResultGPU, OPT_SZ);
         d2h_memcpy_stop = mysecond();
+#endif
     }
+    //////////////////////////////// END TIMER /////////////////////////////////////
     compute_migrate_stop = mysecond();
 
     printf("Shutting down...\n");
     printf("...releasing GPU memory.\n");
-    cuda_free_start = mysecond();
+    cuda_free_start = compute_migrate_stop;
     checkCudaErrors(cudaFree(d_OptionYears));
     checkCudaErrors(cudaFree(d_OptionStrike));
     checkCudaErrors(cudaFree(d_StockPrice));
@@ -291,11 +392,13 @@ int main(int argc, char **argv)
 
     printf("...releasing CPU memory.\n");
     free_start = mysecond();
-//    free(h_OptionYears);
-//    free(h_OptionStrike);
-//    free(h_StockPrice);
-//    free(h_PutResultGPU);
-//    free(h_CallResultGPU);
+#ifndef CUDA_UM
+    free(h_OptionYears);
+    free(h_OptionStrike);
+    free(h_StockPrice);
+    free(h_PutResultGPU);
+    free(h_CallResultGPU);
+#endif
     free(h_PutResultCPU);
     free(h_CallResultCPU);
     free_stop = mysecond();
@@ -303,9 +406,8 @@ int main(int argc, char **argv)
     printf("Shutdown done.\n");
     //////////////////////////////// END APPLICATION TIMER /////////////////////////////////////
     application_stop = mysecond();
-
     sdkDeleteTimer(&cTimer);
- 
+
     printf("\n[BlackScholes] - Test Summary\n");
     printf("\nGPU Time: %f\n", gpuTotalTime/1000.0);
     printf("CPU Time: %f\n", cpuTime/1000.0);
@@ -314,11 +416,22 @@ int main(int argc, char **argv)
     printf("cuda malloc timer: %f\n", cuda_malloc_stop - cuda_malloc_start);
     printf("cuda free timer: %f\n", cuda_free_stop - cuda_free_start);
     printf("Init data timer: %f\n", init_data_stop - init_data_start);
+#ifndef CUDA_UM
+    printf("\nH2D timer: %f\n", h2d_memcpy_stop - h2d_memcpy_start);
+#endif
+    printf("D2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
+#ifdef CUDA_UM_PREFETCH
+    printf("\nH2D async prefetch timer: %f\n", h2d_prefetch_stop - h2d_prefetch_start);
+    printf("D2H async prefetch timer: %f\n", d2h_prefetch_stop - d2h_prefetch_start);
+#endif 
+#ifdef CUDA_UM_ADVISE
+    printf("advise timer: %f\n", advise_stop - advise_start);
+#endif
+    printf("\nKernel timer: %f\n", compute_migrate_stop - compute_migrate_start);
     printf("misc timer: %f\n", malloc_start - application_start);
-    printf("\nD2H timer: %f\n", d2h_memcpy_stop - d2h_memcpy_start);
-    printf("\ncompute migrate timer: %f\n", compute_migrate_stop - compute_migrate_start);
     printf("application timer: %f\n", application_stop - application_start);
 
-    //printf("Test passed\n");
+    printf("\nNOTE: The CUDA Samples are not meant for performance measurements. Results may vary when GPU Boost is enabled.\n\n");
+    printf("Test passed\n");
     exit(EXIT_SUCCESS);
 }

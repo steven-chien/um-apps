@@ -278,6 +278,16 @@ ifeq ($(SAMPLE_ENABLED),0)
 EXEC ?= @echo "[@]"
 endif
 
+ifeq ($(VERSION),CUDA_UM)
+  ALL_CCFLAGS += -DCUDA_UM
+else ifeq ($(VERSION),CUDA_UM_ADVISE)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_ADVISE
+else ifeq ($(VERSION),CUDA_UM_PREFETCH)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_PREFETCH
+else ifeq ($(VERSION),CUDA_UM_BOTH)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_ADVISE -DCUDA_UM_PREFETCH
+endif
+
 ################################################################################
 
 # Target rules

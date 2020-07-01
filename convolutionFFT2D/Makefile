@@ -236,19 +236,13 @@ ALL_CCFLAGS += $(addprefix -Xcompiler ,$(EXTRA_CCFLAGS))
 
 SAMPLE_ENABLED := 1
 
-# This sample is not supported on QNX
-ifeq ($(TARGET_OS),qnx)
-  $(info >>> WARNING - conjugateGradientUM is not supported on QNX - waiving sample <<<)
-  SAMPLE_ENABLED := 0
-endif
-
 ALL_LDFLAGS :=
 ALL_LDFLAGS += $(ALL_CCFLAGS)
 ALL_LDFLAGS += $(addprefix -Xlinker ,$(LDFLAGS))
 ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 
 # Common includes and paths for CUDA
-INCLUDES  := -I$(CUDA_PATH)/samples/common/inc
+INCLUDES  := -I../src -I$(CUDA_PATH)/samples/common/inc
 LIBRARIES :=
 
 ################################################################################
@@ -272,10 +266,20 @@ GENCODE_FLAGS += -gencode arch=compute_$(HIGHEST_SM),code=compute_$(HIGHEST_SM)
 endif
 endif
 
-LIBRARIES += -lcublas -lcusparse
+LIBRARIES += -lcufft
 
 ifeq ($(SAMPLE_ENABLED),0)
 EXEC ?= @echo "[@]"
+endif
+
+ifeq ($(VERSION),CUDA_UM)
+  ALL_CCFLAGS += -DCUDA_UM
+else ifeq ($(VERSION),CUDA_UM_ADVISE)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_ADVISE
+else ifeq ($(VERSION),CUDA_UM_PREFETCH)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_PREFETCH
+else ifeq ($(VERSION),CUDA_UM_BOTH)
+  ALL_CCFLAGS += -DCUDA_UM -DCUDA_UM_ADVISE -DCUDA_UM_PREFETCH
 endif
 
 ################################################################################
@@ -283,7 +287,7 @@ endif
 # Target rules
 all: build
 
-build: conjugateGradient
+build: convolutionFFT2D
 
 check.deps:
 ifeq ($(SAMPLE_ENABLED),0)
@@ -292,19 +296,25 @@ else
 	@echo "Sample is ready - all dependencies have been met"
 endif
 
+convolutionFFT2D.o:convolutionFFT2D.cu
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
+convolutionFFT2D_gold.o:convolutionFFT2D_gold.cpp
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
 main.o:main.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-conjugateGradient: main.o
+convolutionFFT2D: convolutionFFT2D.o convolutionFFT2D_gold.o main.o
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
-#	$(EXEC) mkdir -p ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
-#	$(EXEC) cp $@ ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
+	#$(EXEC) mkdir -p ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
+	#$(EXEC) cp $@ ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
 
 run: build
-	$(EXEC) ./conjugateGradient
+	$(EXEC) ./convolutionFFT2D
 
 clean:
-	rm -f conjugateGradient main.o
-#	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/conjugateGradient
+	rm -f convolutionFFT2D convolutionFFT2D.o convolutionFFT2D_gold.o main.o
+	#rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/convolutionFFT2D
 
 clobber: clean
